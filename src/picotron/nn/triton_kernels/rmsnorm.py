@@ -60,6 +60,8 @@ def triton_rms_norm(hidden_states: Tensor, weight: Tensor, eps: float) -> Tensor
         )
     if not hidden_states.is_cuda:
         raise TritonRMSNormUnavailable("Triton RMSNorm requires a CUDA tensor.")
+    if torch.cuda.get_device_capability(hidden_states.device)[0] < 7:
+        raise TritonRMSNormUnavailable("Triton RMSNorm requires compute capability 7.0+.")
     if hidden_states.ndim < 1 or hidden_states.size(-1) != weight.numel():
         raise TritonRMSNormUnavailable("RMSNorm hidden size must match the weight size.")
     if not hidden_states.is_contiguous() or not weight.is_contiguous():

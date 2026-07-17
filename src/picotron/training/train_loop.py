@@ -6,11 +6,12 @@ from collections.abc import Iterable
 
 import torch
 from torch import Tensor, nn
-from torch.nn import functional as F
 from torch.optim import AdamW
 
 from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
+from picotron.nn.triton_kernels.adamw import AdamWStepWithFallback
+from picotron.nn.triton_kernels.cross_entropy import CrossEntropyWithFallback
 from picotron.parallel.ddp import initialize_distributed, wrap_model
 from picotron.parallel.zero import ZeroOptimizer
 from picotron.serialize.checkpoint import load_checkpoint, save_checkpoint
@@ -61,6 +62,12 @@ def train(
     if resume_from is not None:
         start_step = load_checkpoint(model, active_optimizer, resume_from)
     losses: list[float] = []
+    loss_function = CrossEntropyWithFallback(
+        use_triton=bool(config.model_kwargs.get("use_triton_cross_entropy", False))
+    )
+    optimizer_step = AdamWStepWithFallback(
+        use_triton=bool(config.model_kwargs.get("use_triton_adamw", False))
+    )
 
     with TrainingDisplay(config, total_steps=max_steps) as display:
         for _ in range(config.num_epochs):
@@ -73,15 +80,21 @@ def train(
 
                 active_optimizer.zero_grad(set_to_none=True)
                 logits = model(input_ids)
-                loss = F.cross_entropy(
+                loss = loss_function(
                     logits[:, :-1, :].reshape(-1, logits.size(-1)),
                     input_ids[:, 1:].reshape(-1),
                 )
+                auxiliary_loss = _model_auxiliary_loss(model)
+                if auxiliary_loss is not None:
+                    loss = loss + auxiliary_loss
                 if isinstance(active_optimizer, ZeroOptimizer):
                     active_optimizer.backward(loss, model)
                 else:
                     loss.backward()
-                active_optimizer.step()
+                if isinstance(active_optimizer, ZeroOptimizer):
+                    active_optimizer.step()
+                else:
+                    optimizer_step.step(active_optimizer)
 
                 loss_value = loss.detach().cpu().item()
                 losses.append(loss_value)
@@ -109,3 +122,12 @@ def _batch_to_input_ids(batch: Tensor, device: torch.device) -> Tensor:
     if batch.is_floating_point() or batch.is_complex():
         raise TypeError("Token ids must use an integer tensor dtype.")
     return batch.to(device=device, dtype=torch.long)
+
+
+def _model_auxiliary_loss(model: nn.Module) -> Tensor | None:
+    """Retrieve optional MoE routing loss from a plain or DDP-wrapped model."""
+
+    auxiliary_loss = getattr(model, "auxiliary_loss", None)
+    if auxiliary_loss is None and hasattr(model, "module"):
+        auxiliary_loss = getattr(model.module, "auxiliary_loss", None)
+    return auxiliary_loss if isinstance(auxiliary_loss, Tensor) else None

@@ -70,24 +70,6 @@ def detect_attention_backend(
         and capability[0] >= 8
         and _module_is_installed("flash_attn")
     )
-
-
-def detect_triton_support(
-    *,
-    enabled: bool = False,
-    device: int | torch.device | None = None,
-) -> TritonReport:
-    """Report Triton status without enabling it implicitly."""
-
-    capability = get_gpu_compute_capability(device)
-    installed = _module_is_installed("triton")
-    hardware_compatible = capability is not None and capability[0] >= 7
-    return TritonReport(
-        enabled=enabled,
-        installed=installed,
-        hardware_compatible=hardware_compatible,
-        available=enabled and installed and hardware_compatible,
-    )
     xformers_available = cuda_available and _module_is_installed("xformers")
     sdpa_available = hasattr(torch.nn.functional, "scaled_dot_product_attention")
 
@@ -105,6 +87,24 @@ def detect_triton_support(
         flash_attention_available=flash_attention_available,
         xformers_available=xformers_available,
         sdpa_available=sdpa_available,
+    )
+
+
+def detect_triton_support(
+    *,
+    enabled: bool = False,
+    device: int | torch.device | None = None,
+) -> TritonReport:
+    """Report Triton status without enabling it implicitly."""
+
+    capability = get_gpu_compute_capability(device)
+    installed = _module_is_installed("triton")
+    hardware_compatible = capability is not None and capability[0] >= 7
+    return TritonReport(
+        enabled=enabled,
+        installed=installed,
+        hardware_compatible=hardware_compatible,
+        available=enabled and installed and hardware_compatible,
     )
 
 

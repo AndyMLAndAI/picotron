@@ -6,10 +6,12 @@ import warnings
 
 import torch
 from torch import Tensor, nn
-from torch.nn import functional as F
 
 from picotron.config.config import PicotronConfig
 from picotron.nn.attention import CausalSelfAttention
+from picotron.nn.feedforward import SwiGLU
+from picotron.nn.mla import MultiHeadLatentAttention
+from picotron.nn.moe import MoEFeedForward
 from picotron.nn.triton_kernels.rmsnorm import triton_rms_norm
 
 
@@ -42,42 +44,44 @@ class RMSNorm(nn.Module):
         return normalized * self.weight
 
 
-class SwiGLU(nn.Module):
-    """Llama-style gated feed-forward network."""
-
-    def __init__(self, hidden_size: int, intermediate_size: int) -> None:
-        super().__init__()
-        self.gate_projection = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.up_projection = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_projection = nn.Linear(intermediate_size, hidden_size, bias=False)
-
-    def forward(self, hidden_states: Tensor) -> Tensor:
-        gated = F.silu(self.gate_projection(hidden_states))
-        return self.down_projection(gated * self.up_projection(hidden_states))
-
-
 class DecoderBlock(nn.Module):
     """Pre-normalized causal decoder block with custom self-attention."""
 
-    def __init__(self, config: PicotronConfig) -> None:
+    def __init__(self, config: PicotronConfig, *, use_rope: bool) -> None:
         super().__init__()
         use_triton_rmsnorm = bool(config.model_kwargs.get("use_triton_rmsnorm", False))
         self.attention_norm = RMSNorm(
             config.hidden_size, use_triton_rmsnorm=use_triton_rmsnorm
         )
         # This attribute remains the isolated attention implementation seam.
-        self.attention = CausalSelfAttention(
-            hidden_size=config.hidden_size,
-            num_attention_heads=config.num_attention_heads,
+        self.attention = _build_attention(
+            config,
+            use_rope=use_rope,
         )
         self.mlp_norm = RMSNorm(config.hidden_size, use_triton_rmsnorm=use_triton_rmsnorm)
-        self.mlp = SwiGLU(config.hidden_size, config.intermediate_size)
+        self.mlp = (
+            MoEFeedForward(config.hidden_size, config.intermediate_size, config.moe_config)
+            if config.moe_config is not None
+            else SwiGLU(
+                config.hidden_size,
+                config.intermediate_size,
+                use_triton_swiglu=bool(
+                    config.model_kwargs.get("use_triton_swiglu", False)
+                ),
+            )
+        )
+        self.auxiliary_loss: Tensor | None = None
 
     def forward(self, hidden_states: Tensor) -> Tensor:
         hidden_states = hidden_states + self._apply_causal_attention(
             self.attention_norm(hidden_states)
         )
-        return hidden_states + self.mlp(self.mlp_norm(hidden_states))
+        mlp_output = self.mlp(self.mlp_norm(hidden_states))
+        if isinstance(self.mlp, MoEFeedForward):
+            mlp_output, self.auxiliary_loss = mlp_output
+        else:
+            self.auxiliary_loss = None
+        return hidden_states + mlp_output
 
     def _apply_causal_attention(self, hidden_states: Tensor) -> Tensor:
         """Apply the swappable causal-attention implementation."""
@@ -88,33 +92,50 @@ class DecoderBlock(nn.Module):
 class ToyDecoderModel(nn.Module):
     """Config-driven decoder-only transformer returning vocabulary logits.
 
-    This reference model consumes only Picotron's core dimensions. Family-specific
-    ``config.model_kwargs`` are intentionally left to their concrete model loader.
+    RoPE is the default position scheme; set ``position_embedding_type`` to
+    ``"learned"`` in ``config.model_kwargs`` to retain learned embeddings.
     """
 
     def __init__(self, config: PicotronConfig) -> None:
         super().__init__()
         self.config = config
         use_triton_rmsnorm = bool(config.model_kwargs.get("use_triton_rmsnorm", False))
+        self.position_embedding_type = _position_embedding_type(config)
         self.token_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.position_embeddings = nn.Embedding(config.max_seq_len, config.hidden_size)
+        self.position_embeddings = (
+            None
+            if self.position_embedding_type == "rope"
+            else nn.Embedding(config.max_seq_len, config.hidden_size)
+        )
         self.layers = nn.ModuleList(
-            DecoderBlock(config) for _ in range(config.num_hidden_layers)
+            DecoderBlock(
+                config,
+                use_rope=self.position_embedding_type == "rope"
+                and layer_index not in config.nope_layers,
+            )
+            for layer_index in range(config.num_hidden_layers)
         )
         self.final_norm = RMSNorm(config.hidden_size, use_triton_rmsnorm=use_triton_rmsnorm)
         self.output_projection = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.auxiliary_loss: Tensor | None = None
 
     def forward(self, input_ids: Tensor) -> Tensor:
         """Return logits of shape ``(batch, sequence_length, vocab_size)``."""
 
         self._validate_input_ids(input_ids)
         sequence_length = input_ids.size(1)
-        positions = torch.arange(sequence_length, device=input_ids.device)
         hidden_states = self.token_embeddings(input_ids)
-        hidden_states = hidden_states + self.position_embeddings(positions).unsqueeze(0)
+        if self.position_embeddings is not None:
+            positions = torch.arange(sequence_length, device=input_ids.device)
+            hidden_states = hidden_states + self.position_embeddings(positions).unsqueeze(0)
 
+        auxiliary_losses: list[Tensor] = []
         for layer in self.layers:
             hidden_states = layer(hidden_states)
+            if layer.auxiliary_loss is not None:
+                auxiliary_losses.append(layer.auxiliary_loss)
+
+        self.auxiliary_loss = sum(auxiliary_losses) if auxiliary_losses else None
 
         return self.output_projection(self.final_norm(hidden_states))
 
@@ -131,3 +152,45 @@ class ToyDecoderModel(nn.Module):
             )
         if input_ids.is_floating_point() or input_ids.is_complex():
             raise TypeError("input_ids must use an integer tensor dtype.")
+
+
+def _position_embedding_type(config: PicotronConfig) -> str:
+    position_embedding_type = config.model_kwargs.get("position_embedding_type", "rope")
+    if position_embedding_type not in ("rope", "learned"):
+        raise ValueError("position_embedding_type must be 'rope' or 'learned'.")
+    return position_embedding_type
+
+
+def _rope_theta(config: PicotronConfig) -> float:
+    rope_theta = config.model_kwargs.get("rope_theta", 10_000.0)
+    if isinstance(rope_theta, bool) or not isinstance(rope_theta, (int, float)):
+        raise ValueError("rope_theta must be a positive number.")
+    if rope_theta <= 0:
+        raise ValueError("rope_theta must be a positive number.")
+    return float(rope_theta)
+
+
+def _build_attention(
+    config: PicotronConfig, *, use_rope: bool
+) -> CausalSelfAttention | MultiHeadLatentAttention:
+    """Construct the config-selected eager attention implementation."""
+
+    if config.attention_type == "mla":
+        assert config.kv_lora_rank is not None
+        return MultiHeadLatentAttention(
+            config.hidden_size,
+            config.num_attention_heads,
+            config.kv_lora_rank,
+            use_rope=use_rope,
+            rope_theta=_rope_theta(config),
+            use_triton_rope=bool(config.model_kwargs.get("use_triton_rope", False)),
+        )
+    return CausalSelfAttention(
+        hidden_size=config.hidden_size,
+        num_attention_heads=config.num_attention_heads,
+        num_key_value_heads=config.num_key_value_heads,
+        sliding_window_size=config.sliding_window_size,
+        use_rope=use_rope,
+        rope_theta=_rope_theta(config),
+        use_triton_rope=bool(config.model_kwargs.get("use_triton_rope", False)),
+    )
