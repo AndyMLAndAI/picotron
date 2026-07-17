@@ -41,7 +41,7 @@ from picotron.config.config import PicotronConfig
 
 
 class TrainingDisplay:
-    """Display training progress live in TTYs and periodically in plain text."""
+    """Display training progress live in TTYs and through a tqdm fallback."""
 
     def __init__(
         self,
@@ -127,38 +127,51 @@ class TrainingDisplay:
         }
         if self._live is not None:
             self._progress.update(self._progress_task, completed=step)
-            self._live.update(Group(self._progress, self._render_table()))
+            if self._should_render_metrics(step):
+                self._live.update(Group(self._progress, self._render_table()))
         elif self._fallback_progress is not None:
             self._fallback_progress.update(step - self._fallback_step)
-            self._fallback_progress.set_postfix(loss=f"{loss:.4f}", refresh=False)
+            if self._should_render_metrics(step):
+                self._fallback_progress.set_postfix(loss=f"{loss:.4f}", refresh=False)
             self._fallback_step = step
 
     def _print_startup_banner(self) -> None:
+        model_config = self.config.model.model_config
+        tokens_config = self.config.tokens
+        learning_rate = self.config.optimizer.learning_rate_scheduler.learning_rate
         if _RICH_AVAILABLE and self.console is not None:
             banner = Table(title="Picotron training")
             banner.add_column("Setting")
             banner.add_column("Value")
             for name, value in (
-                ("model", f"{self.config.num_hidden_layers} layers / {self.config.hidden_size} hidden"),
-                ("sequence length", self.config.max_seq_len),
-                ("batch size", self.config.batch_size),
-                ("learning rate", self.config.learning_rate),
+                (
+                    "model",
+                    f"{model_config.num_hidden_layers} layers / {model_config.hidden_size} hidden",
+                ),
+                ("sequence length", tokens_config.sequence_length),
+                ("batch size", tokens_config.micro_batch_size),
+                ("learning rate", learning_rate),
             ):
                 banner.add_row(name, str(value))
             self.console.print(banner)
         else:
             print(
                 "Picotron training: "
-                f"layers={self.config.num_hidden_layers} hidden={self.config.hidden_size} "
-                f"seq_len={self.config.max_seq_len} batch_size={self.config.batch_size} "
-                f"lr={self.config.learning_rate}"
+                f"layers={model_config.num_hidden_layers} hidden={model_config.hidden_size} "
+                f"seq_len={tokens_config.sequence_length} "
+                f"batch_size={tokens_config.micro_batch_size} lr={learning_rate}"
             )
 
     def _render_table(self) -> Table:
         elapsed = time.perf_counter() - self._start_time
         step = int(self._last_values.get("step", 0))
         loss = float(self._last_values.get("loss", 0.0))
-        learning_rate = float(self._last_values.get("learning_rate", self.config.learning_rate))
+        learning_rate = float(
+            self._last_values.get(
+                "learning_rate",
+                self.config.optimizer.learning_rate_scheduler.learning_rate,
+            )
+        )
         tokens_seen = int(self._last_values.get("tokens_seen", 0))
         tokens_per_second = tokens_seen / elapsed if elapsed > 0 else 0.0
         eta = "?"
@@ -178,6 +191,11 @@ class TrainingDisplay:
             eta,
         )
         return table
+
+    def _should_render_metrics(self, step: int) -> bool:
+        """Keep progress current while honoring the configured metric cadence."""
+
+        return step % self.plain_interval == 0 or step == self.total_steps
 
 
 def _format_duration(seconds: float) -> str:

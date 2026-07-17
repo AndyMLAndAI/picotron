@@ -16,7 +16,7 @@ def create_synthetic_dataloader(
     shuffle: bool = True,
     seed: int | None = None,
 ) -> DataLoader[torch.Tensor]:
-    """Build a batched loader using ``config.batch_size``."""
+    """Build a batched loader using ``config.tokens.micro_batch_size``."""
 
     dataset = SyntheticTokenDataset(config, num_sequences, seed=seed)
     generator = None
@@ -25,8 +25,7 @@ def create_synthetic_dataloader(
         generator.manual_seed(seed)
     return DataLoader(
         dataset,
-        batch_size=config.batch_size,
+        batch_size=config.tokens.micro_batch_size,
         shuffle=shuffle,
         generator=generator,
     )
-

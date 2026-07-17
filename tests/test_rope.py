@@ -2,7 +2,7 @@
 
 import torch
 
-from picotron.config.config import PicotronConfig
+from config_factory import make_test_config
 from picotron.models.toy_model import ToyDecoderModel
 from picotron.nn.rope import apply_rotary_embedding, rotary_cos_sin
 
@@ -24,23 +24,22 @@ def test_rope_dot_product_depends_only_on_relative_position() -> None:
 
 
 def test_rope_enabled_model_forward_shape() -> None:
-    config = PicotronConfig(
-        vocab_size=32,
-        hidden_size=16,
-        intermediate_size=32,
-        num_hidden_layers=1,
-        num_attention_heads=4,
-        max_seq_len=8,
-        learning_rate=0.001,
-        batch_size=2,
-        num_epochs=1,
-        checkpoint_interval=100,
-        model_kwargs={"position_embedding_type": "rope", "rope_theta": 500_000.0},
+    config = make_test_config(
+        position_embedding_type="rope",
+        rope_theta=500_000.0,
     )
     model = ToyDecoderModel(config)
-    input_ids = torch.randint(0, config.vocab_size, (config.batch_size, config.max_seq_len))
+    input_ids = torch.randint(
+        0,
+        config.model.model_config.vocab_size,
+        (config.tokens.micro_batch_size, config.tokens.sequence_length),
+    )
 
     logits = model(input_ids)
 
     assert model.position_embeddings is None
-    assert logits.shape == (config.batch_size, config.max_seq_len, config.vocab_size)
+    assert logits.shape == (
+        config.tokens.micro_batch_size,
+        config.tokens.sequence_length,
+        config.model.model_config.vocab_size,
+    )

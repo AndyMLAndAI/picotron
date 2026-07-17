@@ -2,7 +2,7 @@
 
 import torch
 
-from picotron.config.config import PicotronConfig
+from config_factory import make_test_config
 from picotron.models.toy_model import ToyDecoderModel
 from picotron.nn.attention import CausalSelfAttention
 
@@ -39,22 +39,12 @@ def test_sliding_window_blocks_distant_past_tokens() -> None:
 
 
 def test_model_accepts_gqa_and_sliding_window_config() -> None:
-    config = PicotronConfig(
-        vocab_size=32,
-        hidden_size=16,
-        intermediate_size=32,
-        num_hidden_layers=1,
-        num_attention_heads=4,
-        max_seq_len=8,
-        learning_rate=0.001,
-        batch_size=2,
-        num_epochs=1,
-        checkpoint_interval=100,
+    config = make_test_config(
         num_key_value_heads=2,
         sliding_window_size=4,
     )
     model = ToyDecoderModel(config)
 
-    logits = model(torch.randint(0, config.vocab_size, (2, 8)))
+    logits = model(torch.randint(0, config.model.model_config.vocab_size, (2, 8)))
 
-    assert logits.shape == (2, 8, config.vocab_size)
+    assert logits.shape == (2, 8, config.model.model_config.vocab_size)

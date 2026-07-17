@@ -32,7 +32,7 @@ class _RepeatableTokens(Dataset[torch.Tensor]):
 
 def _config():
     path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
-    return replace(load_config(path), num_epochs=10)
+    return load_config(path)
 
 
 def test_display_non_tty_does_not_use_live() -> None:
@@ -60,10 +60,13 @@ def test_display_tty_simulation_does_not_crash() -> None:
 
 def test_training_loss_trend_survives_display() -> None:
     config = _config()
-    sequence = torch.arange(config.max_seq_len, dtype=torch.long) % config.vocab_size
+    sequence = (
+        torch.arange(config.tokens.sequence_length, dtype=torch.long)
+        % config.model.model_config.vocab_size
+    )
     loader = DataLoader(
-        _RepeatableTokens(sequence, config.batch_size * 8),
-        batch_size=config.batch_size,
+        _RepeatableTokens(sequence, config.tokens.micro_batch_size * 40),
+        batch_size=config.tokens.micro_batch_size,
         shuffle=False,
     )
     torch.manual_seed(17)

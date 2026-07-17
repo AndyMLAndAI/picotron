@@ -25,12 +25,31 @@ class DistributedInfo:
         return self.world_size > 1
 
 
-def initialize_distributed(backend: str | None = None) -> DistributedInfo:
-    """Initialize a torchrun process group, or return single-process metadata."""
+def initialize_distributed(
+    backend: str | None = None,
+    *,
+    expected_world_size: int | None = None,
+) -> DistributedInfo:
+    """Initialize torchrun DDP and validate its configured data-parallel size."""
 
-    world_size = int(os.environ.get("WORLD_SIZE", "1"))
-    rank = int(os.environ.get("RANK", "0"))
-    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    try:
+        configured_world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        configured_rank = int(os.environ.get("RANK", "0"))
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    except ValueError as error:
+        raise RuntimeError("torchrun rank environment variables must be integers.") from error
+
+    if dist.is_initialized():
+        world_size = dist.get_world_size()
+        rank = dist.get_rank()
+    else:
+        world_size = configured_world_size
+        rank = configured_rank
+    if expected_world_size is not None and expected_world_size != world_size:
+        raise RuntimeError(
+            "Configured parallelism.dp does not match the active process-group size: "
+            f"expected {expected_world_size}, got {world_size}."
+        )
     if world_size <= 1:
         return DistributedInfo(rank=0, world_size=1, local_rank=0, backend=None)
 
@@ -63,7 +82,12 @@ def wrap_model(
     if not info.is_distributed:
         return model
     if target_device.type == "cuda":
-        return DistributedDataParallel(model, device_ids=[target_device.index])
+        device_index = (
+            torch.cuda.current_device()
+            if target_device.index is None
+            else target_device.index
+        )
+        return DistributedDataParallel(model, device_ids=[device_index])
     return DistributedDataParallel(model)
 
 
@@ -72,4 +96,3 @@ def cleanup_distributed() -> None:
 
     if dist.is_available() and dist.is_initialized():
         dist.destroy_process_group()
-

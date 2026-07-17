@@ -38,14 +38,23 @@ def _run_rank(
             "LOCAL_RANK": str(rank),
         }
     )
-    config = replace(load_config(config_path), zero_stage=zero_stage, num_epochs=1)
+    loaded_config = load_config(config_path)
+    config = replace(
+        loaded_config,
+        parallelism=replace(
+            loaded_config.parallelism, dp=world_size, zero_stage=zero_stage
+        ),
+    )
     torch.manual_seed(41)
     model = ToyDecoderModel(config)
     batch = (
-        torch.arange(config.batch_size * config.max_seq_len, dtype=torch.long)
-        .reshape(config.batch_size, config.max_seq_len)
+        torch.arange(
+            config.tokens.micro_batch_size * config.tokens.sequence_length,
+            dtype=torch.long,
+        )
+        .reshape(config.tokens.micro_batch_size, config.tokens.sequence_length)
         .add(rank)
-        .remainder(config.vocab_size)
+        .remainder(config.model.model_config.vocab_size)
     )
     initialize_distributed(backend="gloo")
     train(model, [batch, batch, batch], config, max_steps=3)

@@ -21,8 +21,8 @@ class SyntheticTokenDataset(Dataset[Tensor]):
     ) -> None:
         if num_sequences <= 0:
             raise ValueError("num_sequences must be positive.")
-        self.vocab_size = config.vocab_size
-        self.max_seq_len = config.max_seq_len
+        self.vocab_size = config.model.model_config.vocab_size
+        self.sequence_length = config.tokens.sequence_length
         self.num_sequences = num_sequences
         self._generator = None
         if seed is not None:
@@ -38,8 +38,7 @@ class SyntheticTokenDataset(Dataset[Tensor]):
         return torch.randint(
             low=0,
             high=self.vocab_size,
-            size=(self.max_seq_len,),
+            size=(self.sequence_length,),
             dtype=torch.long,
             generator=self._generator,
         )
-

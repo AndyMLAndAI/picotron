@@ -14,9 +14,7 @@ from picotron_sft.sft_trainer import _extract_logits
 MODEL_ID = "Qwen/Qwen3-8B"
 MODEL_SPECIFIC_KWARGS = {
     "model_type": "qwen3",
-    "num_key_value_heads": 8,
     "head_dim": 128,
-    "rope_theta": 1_000_000,
 }
 
 
@@ -24,17 +22,26 @@ def make_picotron_config() -> PicotronConfig:
     """Return base dimensions matching Qwen3-8B."""
 
     return PicotronConfig(
-        vocab_size=151936,
-        hidden_size=4096,
-        intermediate_size=12288,
-        num_hidden_layers=36,
-        num_attention_heads=32,
-        max_seq_len=40960,
-        learning_rate=1e-5,
-        batch_size=1,
-        num_epochs=1,
-        checkpoint_interval=100,
-        model_kwargs=MODEL_SPECIFIC_KWARGS,
+        checkpoints={"checkpoint_interval": 100},
+        model={
+            "model_config": {
+                "vocab_size": 151936,
+                "hidden_size": 4096,
+                "intermediate_size": 12288,
+                "num_hidden_layers": 36,
+                "num_attention_heads": 32,
+                "num_key_value_heads": 8,
+                "attention_type": "gqa",
+                "rope_theta": 1_000_000,
+                "model_kwargs": MODEL_SPECIFIC_KWARGS,
+            },
+        },
+        optimizer={"learning_rate_scheduler": {"learning_rate": 1e-5}},
+        parallelism={"dp": 1},
+        tokens={"sequence_length": 40960, "micro_batch_size": 1, "train_steps": 100},
+        data={"vocab_size": 151936},
+        logging={},
+        general={"run": "qwen3_sft_example"},
     )
 
 
@@ -52,9 +59,9 @@ def run_example(model: Any, dataset: Any, checkpoint_path: str | None = None):
         model,
         dataset,
         base_checkpoint_path=checkpoint_path,
-        learning_rate=config.learning_rate,
-        batch_size=config.batch_size,
-        num_steps=100,
+        learning_rate=config.optimizer.learning_rate_scheduler.learning_rate,
+        batch_size=config.tokens.micro_batch_size,
+        num_steps=config.tokens.train_steps,
         use_cache=False,
     )
 

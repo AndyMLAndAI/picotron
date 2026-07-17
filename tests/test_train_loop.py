@@ -1,6 +1,5 @@
 """CPU verification for the single-device training loop."""
 
-from dataclasses import replace
 from pathlib import Path
 
 import torch
@@ -29,10 +28,17 @@ class _RepeatableSyntheticDataset(Dataset[torch.Tensor]):
 
 def test_training_loss_decreases_on_cpu() -> None:
     config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
-    config = replace(load_config(config_path), num_epochs=10)
-    sequence = torch.arange(config.max_seq_len, dtype=torch.long) % config.vocab_size
-    dataset = _RepeatableSyntheticDataset(sequence, size=config.batch_size * 8)
-    data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
+    config = load_config(config_path)
+    sequence = (
+        torch.arange(config.tokens.sequence_length, dtype=torch.long)
+        % config.model.model_config.vocab_size
+    )
+    dataset = _RepeatableSyntheticDataset(
+        sequence, size=config.tokens.micro_batch_size * 80
+    )
+    data_loader = DataLoader(
+        dataset, batch_size=config.tokens.micro_batch_size, shuffle=False
+    )
     model = ToyDecoderModel(config)
 
     losses = train(model, data_loader, config, max_steps=80)

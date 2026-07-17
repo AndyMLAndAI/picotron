@@ -1,5 +1,6 @@
 """CPU/Gloo DDP synchronization tests."""
 
+from dataclasses import replace
 import os
 import socket
 from pathlib import Path
@@ -37,22 +38,33 @@ def _ddp_worker(
             "LOCAL_RANK": str(rank),
         }
     )
-    config = load_config(config_path)
+    loaded_config = load_config(config_path)
+    config = replace(
+        loaded_config,
+        parallelism=replace(loaded_config.parallelism, dp=world_size),
+    )
     torch.manual_seed(23)
     model = ToyDecoderModel(config)
     info = initialize_distributed(backend="gloo")
     model = wrap_model(model, info, device="cpu")
-    optimizer = AdamW(model.parameters(), lr=config.learning_rate)
+    optimizer = AdamW(
+        model.parameters(),
+        lr=config.optimizer.learning_rate_scheduler.learning_rate,
+    )
     input_ids = (
-        torch.arange(config.batch_size * config.max_seq_len, dtype=torch.long)
-        .reshape(config.batch_size, config.max_seq_len)
+        torch.arange(
+            config.tokens.micro_batch_size * config.tokens.sequence_length,
+            dtype=torch.long,
+        )
+        .reshape(config.tokens.micro_batch_size, config.tokens.sequence_length)
         .add(rank)
-        .remainder(config.vocab_size)
+        .remainder(config.model.model_config.vocab_size)
     )
     optimizer.zero_grad(set_to_none=True)
     logits = model(input_ids)
     loss = F.cross_entropy(
-        logits[:, :-1].reshape(-1, config.vocab_size), input_ids[:, 1:].reshape(-1)
+        logits[:, :-1].reshape(-1, config.model.model_config.vocab_size),
+        input_ids[:, 1:].reshape(-1),
     )
     loss.backward()
     optimizer.step()
@@ -92,4 +104,3 @@ def test_two_rank_cpu_gradients_synchronize(tmp_path: Path) -> None:
     assert rank_zero.keys() == rank_one.keys()
     for name in rank_zero:
         torch.testing.assert_close(rank_zero[name], rank_one[name], rtol=0, atol=0)
-

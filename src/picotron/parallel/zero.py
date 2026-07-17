@@ -21,6 +21,9 @@ class ZeroOptimizer:
         *,
         learning_rate: float,
         stage: int,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
     ) -> None:
         if stage not in (1, 2):
             raise ValueError("ZeRO stage must be 1 or 2.")
@@ -34,7 +37,13 @@ class ZeroOptimizer:
             for parameter, owner in zip(self.parameters, self._owners, strict=True)
             if owner == self.rank
         ]
-        self._optimizer = AdamW(self._owned_parameters, lr=learning_rate)
+        self._optimizer = AdamW(
+            self._owned_parameters,
+            lr=learning_rate,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+        )
         self.param_groups = self._optimizer.param_groups
 
     def zero_grad(self, *, set_to_none: bool = True) -> None:
@@ -59,6 +68,29 @@ class ZeroOptimizer:
         if self.world_size > 1:
             for parameter, owner in zip(self.parameters, self._owners, strict=True):
                 dist.broadcast(parameter.data, src=owner)
+
+    def clip_grad_norm_(self, max_norm: float) -> Tensor:
+        """Clip gradients with globally correct norm semantics for both stages."""
+
+        if max_norm <= 0:
+            raise ValueError("max_norm must be positive.")
+        gradients = [parameter.grad for parameter in self.parameters if parameter.grad is not None]
+        if not gradients:
+            return torch.tensor(0.0)
+
+        norm_device = gradients[0].device
+        local_squared_norm = torch.zeros((), device=norm_device, dtype=torch.float32)
+        for gradient in gradients:
+            local_squared_norm.add_(gradient.detach().float().pow(2).sum())
+        if self.stage == 2 and self.world_size > 1:
+            dist.all_reduce(local_squared_norm, op=dist.ReduceOp.SUM)
+
+        total_norm = local_squared_norm.sqrt()
+        clip_coefficient = max_norm / (total_norm + 1e-6)
+        if clip_coefficient < 1:
+            for gradient in gradients:
+                gradient.mul_(clip_coefficient.to(dtype=gradient.dtype))
+        return total_norm
 
     def state_dict(self) -> dict[str, Any]:
         """Return this rank's optimizer-state shard for rank-local persistence."""

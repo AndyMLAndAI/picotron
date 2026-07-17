@@ -29,11 +29,11 @@ def _load_example(name: str):
 def test_sft_example_config_and_hf_output_contract(name: str) -> None:
     example = _load_example(name)
     config = example.make_picotron_config()
-    output = _HFStyleOutput(torch.zeros(1, 2, config.vocab_size))
+    model_config = config.model.model_config
+    output = _HFStyleOutput(torch.zeros(1, 2, model_config.vocab_size))
 
     logits = example.logits_from_model_output(output)
 
-    assert logits.shape == (1, 2, config.vocab_size)
-    assert config.hidden_size % config.num_attention_heads == 0
+    assert logits.shape == (1, 2, model_config.vocab_size)
+    assert model_config.hidden_size % model_config.num_attention_heads == 0
     assert example.MODEL_SPECIFIC_KWARGS
-

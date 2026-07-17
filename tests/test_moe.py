@@ -2,6 +2,7 @@
 
 import torch
 
+from config_factory import make_test_config
 from picotron.config.config import MoEConfig, PicotronConfig
 from picotron.models.toy_model import ToyDecoderModel
 from picotron.nn.feedforward import SwiGLU
@@ -10,17 +11,8 @@ from picotron.training.train_loop import train
 
 
 def _config(moe_config: MoEConfig | None) -> PicotronConfig:
-    return PicotronConfig(
-        vocab_size=32,
-        hidden_size=16,
-        intermediate_size=32,
-        num_hidden_layers=1,
-        num_attention_heads=4,
-        max_seq_len=8,
+    return make_test_config(
         learning_rate=0.003,
-        batch_size=2,
-        num_epochs=1,
-        checkpoint_interval=100,
         moe_config=moe_config,
     )
 
@@ -53,7 +45,9 @@ def test_dense_ffn_path_remains_default() -> None:
 def test_moe_model_training_loss_decreases() -> None:
     config = _config(MoEConfig(num_experts=2, top_k=2, aux_loss_coefficient=0.01))
     model = ToyDecoderModel(config)
-    tokens = torch.arange(config.max_seq_len).unsqueeze(0).repeat(config.batch_size, 1)
+    tokens = torch.arange(config.tokens.sequence_length).unsqueeze(0).repeat(
+        config.tokens.micro_batch_size, 1
+    )
 
     losses = train(model, [tokens] * 40, config, max_steps=40)
 

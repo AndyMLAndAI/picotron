@@ -4,3 +4,6 @@ pytest
 rich
 tqdm
 datasets
+safetensors
+numpy
+transformers

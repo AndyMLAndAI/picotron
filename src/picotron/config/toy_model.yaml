@@ -1,10 +1,29 @@
-vocab_size: 64
-hidden_size: 32
-intermediate_size: 64
-num_hidden_layers: 2
-num_attention_heads: 4
-max_seq_len: 16
-learning_rate: 0.001
-batch_size: 2
-num_epochs: 1
-checkpoint_interval: 100
+checkpoints:
+  checkpoint_interval: 100
+  save_final_state: false
+model:
+  dtype: auto
+  model_config:
+    vocab_size: 64
+    hidden_size: 32
+    intermediate_size: 64
+    num_hidden_layers: 2
+    num_attention_heads: 4
+optimizer:
+  learning_rate_scheduler:
+    learning_rate: 0.001
+parallelism:
+  dp: 1
+  zero_stage: 0
+tokens:
+  sequence_length: 16
+  micro_batch_size: 2
+  train_steps: 1
+data:
+  vocab_size: 64
+logging:
+  iteration_step_info_interval: 1
+general:
+  project: picotron
+  run: toy-model
+  seed: 1337
