@@ -57,3 +57,59 @@ def test_missing_required_field_still_fails_loudly(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigValidationError, match="missing required fields: vocab_size"):
         load_config(config_path)
+
+
+def test_all_advanced_config_fields_load_together(tmp_path: Path) -> None:
+    """Prevent advanced model fields from falling out of the strict YAML schema."""
+
+    config_path = tmp_path / "advanced.yaml"
+    config_path.write_text(
+        REQUIRED_CONFIG
+        + """\
+zero_stage: 0
+num_key_value_heads: 2
+sliding_window_size: 8
+moe_config:
+  num_experts: 4
+  top_k: 2
+  aux_loss_coefficient: 0.01
+nope_layers: [1]
+attention_type: gqa
+kv_lora_rank: 8
+model_kwargs:
+  position_embedding_type: rope
+  rope_theta: 500000.0
+  use_triton_rmsnorm: false
+  use_triton_swiglu: false
+  use_triton_rope: false
+  use_triton_cross_entropy: false
+  use_triton_adamw: false
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.attention_type == "gqa"
+    assert config.nope_layers == (1,)
+    assert config.num_key_value_heads == 2
+    assert config.sliding_window_size == 8
+    assert config.kv_lora_rank == 8
+    assert config.moe_config is not None
+    assert config.moe_config.num_experts == 4
+    assert config.model_kwargs["rope_theta"] == 500000.0
+
+
+def test_attention_type_and_nope_layers_yaml_regression(tmp_path: Path) -> None:
+    """Cover the exact advanced-field combination that failed on Kaggle."""
+
+    config_path = tmp_path / "kaggle_regression.yaml"
+    config_path.write_text(
+        REQUIRED_CONFIG + "attention_type: mha\nnope_layers: [0]\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.attention_type == "mha"
+    assert config.nope_layers == (0,)
