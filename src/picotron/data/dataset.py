@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -42,3 +45,31 @@ class SyntheticTokenDataset(Dataset[Tensor]):
             dtype=torch.long,
             generator=self._generator,
         )
+
+
+class MemmapTokenDataset(Dataset[Tensor]):
+    """Read fixed-length token examples lazily from a uint16 memmap file."""
+
+    def __init__(self, config: PicotronConfig, path: str | Path) -> None:
+        token_path = Path(path)
+        if not token_path.is_file():
+            raise FileNotFoundError(f"Token cache does not exist: {token_path}")
+        if token_path.stat().st_size % np.dtype(np.uint16).itemsize:
+            raise ValueError("Token cache size must be divisible by uint16 item size.")
+        self.sequence_length = config.tokens.sequence_length
+        self._tokens = np.memmap(token_path, mode="r", dtype=np.uint16)
+        self._num_sequences = len(self._tokens) // self.sequence_length
+        if self._num_sequences <= 0:
+            raise ValueError("Token cache does not contain a complete sequence.")
+
+    def __len__(self) -> int:
+        return self._num_sequences
+
+    def __getitem__(self, index: int) -> Tensor:
+        if index < 0 or index >= self._num_sequences:
+            raise IndexError(f"Memmap token index out of range: {index}.")
+        start = index * self.sequence_length
+        values = np.asarray(
+            self._tokens[start : start + self.sequence_length], dtype=np.int64
+        )
+        return torch.from_numpy(values.copy())

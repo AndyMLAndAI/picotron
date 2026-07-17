@@ -10,7 +10,10 @@ from typing import Sequence
 import torch
 
 from picotron.config.config import load_config
-from picotron.data.dataloader import create_synthetic_dataloader
+from picotron.data.dataloader import (
+    create_memmap_dataloader,
+    create_synthetic_dataloader,
+)
 from picotron.models.toy_model import ToyDecoderModel
 from picotron.parallel.ddp import initialize_distributed
 from picotron.training.train_loop import train
@@ -19,17 +22,20 @@ from picotron.training.train_loop import train
 def build_parser() -> argparse.ArgumentParser:
     """Build the pretraining CLI parser without executing training."""
 
-    parser = argparse.ArgumentParser(description="Run Picotron synthetic pretraining.")
+    parser = argparse.ArgumentParser(
+        description="Run Picotron pretraining from a configured token cache or synthetic data."
+    )
     parser.add_argument("--config", required=True, type=Path, help="YAML config path.")
     parser.add_argument(
         "--num-sequences",
         type=int,
         default=1024,
-        help="Number of synthetic sequences in each epoch.",
+        help="Number of synthetic sequences; ignored when data.dataset_token_path is set.",
     )
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--checkpoint-path", type=Path, default=None)
     parser.add_argument("--resume-from", type=Path, default=None)
+    parser.add_argument("--local-rank", "--local_rank", type=int, default=None, help=argparse.SUPPRESS)
     return parser
 
 
@@ -45,9 +51,23 @@ def main(argv: Sequence[str] | None = None) -> None:
         torch.cuda.set_device(device)
     else:
         device = torch.device("cpu")
-    initialize_distributed(expected_world_size=config.parallelism.dp)
+    distributed_info = initialize_distributed(
+        expected_world_size=config.parallelism.dp
+    )
     model = ToyDecoderModel(config)
-    data_loader = create_synthetic_dataloader(config, args.num_sequences)
+    if config.data.dataset_token_path is not None:
+        data_loader = create_memmap_dataloader(
+            config,
+            rank=distributed_info.rank,
+            world_size=distributed_info.world_size,
+            num_workers=2 if torch.cuda.is_available() else 0,
+        )
+    else:
+        data_loader = create_synthetic_dataloader(
+            config,
+            args.num_sequences,
+            seed=config.general.seed,
+        )
     train(
         model,
         data_loader,
