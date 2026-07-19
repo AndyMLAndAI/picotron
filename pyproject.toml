@@ -22,7 +22,8 @@ dependencies = [
 picotron = "picotron.cli:main"
 picotron-sft = "picotron_sft.cli:main"
 picotron-dpo = "picotron_dpo.cli:main"
+picotron-grpo = "picotron_grpo.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["picotron*", "picotron_sft*", "picotron_dpo*"]
+include = ["picotron*", "picotron_sft*", "picotron_dpo*", "picotron_grpo*"]
