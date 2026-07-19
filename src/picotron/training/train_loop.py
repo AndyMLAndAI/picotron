@@ -111,7 +111,9 @@ def train(
         total_steps=start_step + target_steps,
         plain_interval=config.logging.iteration_step_info_interval,
     ) as display, FileLogger(config, method="pretraining") as file_logger:
+        data_epoch = 0
         while len(losses) < target_steps:
+            _set_data_epoch(data_loader, data_epoch)
             batches_this_pass = 0
             for batch in data_loader:
                 batches_this_pass += 1
@@ -190,6 +192,7 @@ def train(
                     "The data loader yielded no batches before the configured train-step "
                     "budget was reached."
                 )
+            data_epoch += 1
 
     final_step = start_step + len(losses)
     if (
@@ -312,7 +315,15 @@ def _batch_to_input_ids(batch: Tensor, device: torch.device) -> Tensor:
         raise TypeError("The data loader must yield token-id tensors.")
     if batch.is_floating_point() or batch.is_complex():
         raise TypeError("Token ids must use an integer tensor dtype.")
-    return batch.to(device=device, dtype=torch.long)
+    return batch.to(device=device, dtype=torch.long, non_blocking=True)
+
+
+def _set_data_epoch(data_loader: Iterable[Tensor], epoch: int) -> None:
+    """Advance DistributedSampler shuffles when a finite loader is restarted."""
+
+    sampler = getattr(data_loader, "sampler", None)
+    if isinstance(sampler, torch.utils.data.DistributedSampler):
+        sampler.set_epoch(epoch)
 
 
 def _model_auxiliary_loss(model: nn.Module) -> Tensor | None:

@@ -60,13 +60,14 @@ def main(argv: Sequence[str] | None = None) -> None:
             config,
             rank=distributed_info.rank,
             world_size=distributed_info.world_size,
-            num_workers=2 if torch.cuda.is_available() else 0,
         )
     else:
         data_loader = create_synthetic_dataloader(
             config,
             args.num_sequences,
             seed=config.general.seed,
+            rank=distributed_info.rank,
+            world_size=distributed_info.world_size,
         )
     train(
         model,

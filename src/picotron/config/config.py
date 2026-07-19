@@ -438,17 +438,21 @@ class TokensConfig:
 
 @dataclass(frozen=True, slots=True)
 class DataConfig:
-    """Optional preprocessed-data and tokenizer metadata."""
+    """Preprocessed-data metadata and DataLoader worker settings."""
 
     dataset_token_path: str | None = None
     tokenizer_name: str | None = None
     vocab_size: int | None = None
+    num_workers: int = 4
+    prefetch_factor: int = 2
 
     def __post_init__(self) -> None:
         _require_optional_path("dataset_token_path", self.dataset_token_path)
         _require_optional_path("tokenizer_name", self.tokenizer_name)
         if self.vocab_size is not None:
             _require_positive_int("data.vocab_size", self.vocab_size)
+        _require_nonnegative_int("data.num_workers", self.num_workers)
+        _require_positive_int("data.prefetch_factor", self.prefetch_factor)
 
 
 @dataclass(frozen=True, slots=True)

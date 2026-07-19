@@ -147,6 +147,8 @@ data:
   dataset_token_path: /tmp/tokens.uint16
   tokenizer_name: gpt2
   vocab_size: 64
+  num_workers: 3
+  prefetch_factor: 4
 logging:
   log_level: INFO
   iteration_step_info_interval: 5
@@ -204,6 +206,8 @@ general:
     assert config.data.dataset_token_path == "/tmp/tokens.uint16"
     assert config.data.tokenizer_name == "gpt2"
     assert config.data.vocab_size == 64
+    assert config.data.num_workers == 3
+    assert config.data.prefetch_factor == 4
     assert config.logging.log_level == "INFO"
     assert config.logging.iteration_step_info_interval == 5
     assert config.logging.file_logging
