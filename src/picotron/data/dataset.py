@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 from pathlib import Path
+import shutil
+import tempfile
+import uuid
 
 import numpy as np
 import torch
@@ -54,6 +59,7 @@ class MemmapTokenDataset(Dataset[Tensor]):
         token_path = Path(path)
         if not token_path.is_file():
             raise FileNotFoundError(f"Token cache does not exist: {token_path}")
+        token_path = _decompress_gzip_cache(token_path)
         if token_path.stat().st_size % np.dtype(np.uint16).itemsize:
             raise ValueError("Token cache size must be divisible by uint16 item size.")
         self.sequence_length = config.tokens.sequence_length
@@ -73,3 +79,25 @@ class MemmapTokenDataset(Dataset[Tensor]):
             self._tokens[start : start + self.sequence_length], dtype=np.int64
         )
         return torch.from_numpy(values.copy())
+
+
+def _decompress_gzip_cache(token_path: Path) -> Path:
+    """Materialize an opt-in gzip token cache once before memmapping it."""
+
+    if token_path.suffix.lower() != ".gz":
+        return token_path
+    cache_key = f"{token_path.resolve()}:{token_path.stat().st_mtime_ns}:{token_path.stat().st_size}"
+    digest = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
+    cache_dir = Path(tempfile.gettempdir()) / "picotron-token-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = cache_dir / f"{digest}.uint16"
+    if raw_path.exists():
+        return raw_path
+    temporary_path = cache_dir / f"{raw_path.name}.{uuid.uuid4().hex}.partial"
+    with gzip.open(token_path, "rb") as compressed_file, temporary_path.open("wb") as raw_file:
+        shutil.copyfileobj(compressed_file, raw_file, length=1024 * 1024)
+    if raw_path.exists():
+        temporary_path.unlink(missing_ok=True)
+    else:
+        temporary_path.replace(raw_path)
+    return raw_path

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Mapping
 
 try:
     from rich.console import Console
@@ -50,13 +50,17 @@ class TrainingDisplay:
         total_steps: int | None = None,
         console: Console | None = None,
         plain_interval: int = 10,
+        loss_label: str = "loss",
     ) -> None:
         if plain_interval <= 0:
             raise ValueError("plain_interval must be positive.")
+        if not loss_label:
+            raise ValueError("loss_label must be non-empty.")
         self.config = config
         self.total_steps = total_steps
         self.console = console if console is not None else Console() if _RICH_AVAILABLE else None
         self.plain_interval = plain_interval
+        self.loss_label = loss_label
         self._live = None
         self._progress = None
         self._progress_task = None
@@ -64,6 +68,7 @@ class TrainingDisplay:
         self._fallback_step = 0
         self._start_time = 0.0
         self._last_values: dict[str, float | int] = {}
+        self._extra_metrics: dict[str, float] = {}
 
     @property
     def use_live(self) -> bool:
@@ -116,14 +121,18 @@ class TrainingDisplay:
         loss: float,
         learning_rate: float,
         tokens_seen: int,
+        metrics: Mapping[str, float] | None = None,
     ) -> None:
-        """Record and render one optimizer step."""
+        """Record and render one optimizer step with optional named metrics."""
 
         self._last_values = {
             "step": step,
             "loss": loss,
             "learning_rate": learning_rate,
             "tokens_seen": tokens_seen,
+        }
+        self._extra_metrics = {
+            name: float(value) for name, value in (metrics or {}).items()
         }
         if self._live is not None:
             self._progress.update(self._progress_task, completed=step)
@@ -132,7 +141,11 @@ class TrainingDisplay:
         elif self._fallback_progress is not None:
             self._fallback_progress.update(step - self._fallback_step)
             if self._should_render_metrics(step):
-                self._fallback_progress.set_postfix(loss=f"{loss:.4f}", refresh=False)
+                postfix = {self.loss_label: f"{loss:.4f}"}
+                postfix.update(
+                    {name: f"{value:.4f}" for name, value in self._extra_metrics.items()}
+                )
+                self._fallback_progress.set_postfix(postfix, refresh=False)
             self._fallback_step = step
 
     def _print_startup_banner(self) -> None:
@@ -180,16 +193,26 @@ class TrainingDisplay:
             eta = _format_duration(remaining_tokens / tokens_per_second)
 
         table = Table(title="Training progress")
-        for column in ("step", "loss", "learning_rate", "tokens/sec", "elapsed", "ETA"):
+        base_columns = (
+            "step",
+            self.loss_label,
+            "learning_rate",
+            "tokens/sec",
+            "elapsed",
+            "ETA",
+        )
+        for column in (*base_columns, *self._extra_metrics):
             table.add_column(column)
-        table.add_row(
+        values = [
             str(step),
             f"{loss:.6f}",
             f"{learning_rate:.6g}",
             f"{tokens_per_second:.1f}",
             _format_duration(elapsed),
             eta,
-        )
+        ]
+        values.extend(f"{value:.6f}" for value in self._extra_metrics.values())
+        table.add_row(*values)
         return table
 
     def _should_render_metrics(self, step: int) -> bool:
