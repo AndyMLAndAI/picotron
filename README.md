@@ -13,9 +13,9 @@ hardware before being relied on for a production-sized run.
 
 Triton kernel flags live under `model.triton_kernels` and are disabled by
 default. See [the Triton kernel status and configuration guide](docs/triton_kernels.md).
-The currently shipped Triton paths are guarded inference-only experiments:
-they intentionally fall back to PyTorch during autograd, so they do not yet
-speed up training.
+RMSNorm now has a fused Triton forward with a correct PyTorch backward;
+the remaining Triton paths remain guarded inference-only experiments and
+fall back during autograd.
 
 ## CPU checks
 

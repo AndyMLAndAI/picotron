@@ -10,7 +10,11 @@ from picotron.nn.triton_kernels.cross_entropy import (
     TritonCrossEntropyUnavailable,
     triton_cross_entropy,
 )
-from picotron.nn.triton_kernels.rmsnorm import TritonRMSNormUnavailable, triton_rms_norm
+from picotron.nn.triton_kernels.rmsnorm import (
+    TritonRMSNormUnavailable,
+    rms_norm_with_pytorch_forward,
+    triton_rms_norm,
+)
 from picotron.nn.triton_kernels.rope import TritonRoPEUnavailable, triton_apply_rotary_embedding
 from picotron.nn.triton_kernels.swiglu import TritonSwiGLUUnavailable, triton_swiglu
 
@@ -28,4 +32,5 @@ __all__ = [
     "triton_cross_entropy",
     "triton_rms_norm",
     "triton_swiglu",
+    "rms_norm_with_pytorch_forward",
 ]
