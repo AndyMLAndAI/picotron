@@ -50,6 +50,9 @@ def train(
             raise RuntimeError("CUDA training was requested but CUDA is unavailable.")
         if target_device.index is not None:
             torch.cuda.set_device(target_device)
+        # Training uses one fixed sequence length, so cuDNN's shape autotuning
+        # can safely select its fastest kernels without re-tuning every step.
+        torch.backends.cudnn.benchmark = True
 
     training_dtype = config.model.resolve_dtype(target_device)
     if target_device.type == "cpu" and training_dtype != torch.float32:
