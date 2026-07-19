@@ -12,6 +12,73 @@ from torch import Tensor, nn
 from torch.optim import AdamW
 
 
+class DistributedGradScaler:
+    """Loss scaler whose overflow decision is shared by every ZeRO rank.
+
+    ``torch.amp.GradScaler`` owns the scale tensor while ZeRO owns gradient
+    unscaling and finite checks. This avoids relying on private GradScaler
+    optimizer-state internals for a sharded optimizer.
+    """
+
+    def __init__(
+        self,
+        device_type: str,
+        *,
+        init_scale: float = 65_536.0,
+        growth_factor: float = 2.0,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 2_000,
+    ) -> None:
+        self._scaler = torch.amp.GradScaler(
+            device_type,
+            init_scale=init_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+        )
+        self._growth_factor = growth_factor
+        self._backoff_factor = backoff_factor
+        self._growth_interval = growth_interval
+        self._successful_steps = 0
+
+    def scale(self, loss: Tensor) -> Tensor:
+        """Scale one loss before its ZeRO-aware backward pass."""
+
+        return self._scaler.scale(loss)
+
+    def step(
+        self,
+        optimizer: "ZeroOptimizer",
+        model: nn.Module,
+        *,
+        max_grad_norm: float | None = None,
+    ) -> bool:
+        """Unscale globally, then update all ranks together when finite.
+
+        Returns ``True`` only when an optimizer update was performed.
+        """
+
+        del model  # ZeRO already receives the wrapped model during backward.
+        found_inf = optimizer.unscale_and_check_(self._scaler.get_scale())
+        if found_inf:
+            self._successful_steps = 0
+            self._set_scale(self._scaler.get_scale() * self._backoff_factor)
+            return False
+        if max_grad_norm is not None:
+            optimizer.clip_grad_norm_(max_grad_norm)
+        optimizer.step()
+        self._successful_steps += 1
+        if self._successful_steps >= self._growth_interval:
+            self._successful_steps = 0
+            self._set_scale(self._scaler.get_scale() * self._growth_factor)
+        else:
+            self._set_scale(self._scaler.get_scale())
+        return True
+
+    def _set_scale(self, value: float) -> None:
+        self._scaler.update(new_scale=max(value, 1.0))
+
+
 class ZeroOptimizer:
     """Shard AdamW ownership across ranks while keeping model parameters replicated."""
 
@@ -68,6 +135,32 @@ class ZeroOptimizer:
         if self.world_size > 1:
             for parameter, owner in zip(self.parameters, self._owners, strict=True):
                 dist.broadcast(parameter.data, src=owner)
+
+    def unscale_and_check_(self, scale: float) -> bool:
+        """Return a globally synchronized overflow result and unscale gradients.
+
+        Stage 1 has replicated reduced gradients. Stage 2 retains only each
+        owner's reduced gradient. In both cases, the all-reduced flag covers
+        the complete logical gradient set before any rank decides to update.
+        """
+
+        if scale <= 0:
+            raise ValueError("loss scale must be positive.")
+        device = self.parameters[0].device if self.parameters else torch.device("cpu")
+        found_inf = torch.zeros((), dtype=torch.int32, device=device)
+        for parameter in self.parameters:
+            if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
+                found_inf.fill_(1)
+                break
+        if self.world_size > 1:
+            dist.all_reduce(found_inf, op=dist.ReduceOp.MAX)
+        if found_inf.item():
+            return True
+        inverse_scale = 1.0 / scale
+        for parameter in self.parameters:
+            if parameter.grad is not None:
+                parameter.grad.mul_(inverse_scale)
+        return False
 
     def clip_grad_norm_(self, max_norm: float) -> Tensor:
         """Clip gradients with globally correct norm semantics for both stages."""

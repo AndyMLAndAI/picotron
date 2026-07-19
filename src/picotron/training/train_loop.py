@@ -18,7 +18,7 @@ from picotron.logging.file_logger import FileLogger
 from picotron.nn.triton_kernels.adamw import AdamWStepWithFallback
 from picotron.nn.triton_kernels.cross_entropy import CrossEntropyWithFallback
 from picotron.parallel.ddp import DistributedInfo, initialize_distributed, wrap_model
-from picotron.parallel.zero import ZeroOptimizer
+from picotron.parallel.zero import DistributedGradScaler, ZeroOptimizer
 from picotron.serialize.checkpoint import load_checkpoint, save_checkpoint
 
 
@@ -70,20 +70,8 @@ def train(
     zero_stage = config.parallelism.zero_stage
     if zero_stage > 0 and optimizer is not None:
         raise ValueError("Pass no optimizer when ZeRO is enabled; it creates sharded AdamW.")
-    if target_device.type == "cuda" and training_dtype == torch.float16 and zero_stage > 0:
-        raise NotImplementedError(
-            "fp16 with ZeRO requires a distributed GradScaler path that is not implemented; "
-            "use zero_stage=0 or float32 until it is added."
-        )
-
     save_path = checkpoint_path or config.checkpoints.checkpoints_path
     resume_path = resume_from or config.checkpoints.resume_checkpoint_path
-    if zero_stage > 0 and distributed_info.is_distributed and (
-        save_path is not None or resume_path is not None
-    ):
-        raise NotImplementedError(
-            "Distributed ZeRO checkpointing requires rank-sharded checkpoint files."
-        )
 
     active_optimizer = _build_optimizer(model, config, optimizer)
     start_step = 0
@@ -104,7 +92,7 @@ def train(
     optimizer_step = AdamWStepWithFallback(
         use_triton=config.model.triton_kernels.adamw
     )
-    grad_scaler = _create_grad_scaler(target_device, training_dtype)
+    grad_scaler = _create_grad_scaler(target_device, training_dtype, zero_stage)
 
     with TrainingDisplay(
         config,
@@ -142,7 +130,14 @@ def train(
                     auxiliary_loss = _model_auxiliary_loss(model)
                     if auxiliary_loss is not None:
                         loss = loss + auxiliary_loss
-                if grad_scaler is not None:
+                if isinstance(grad_scaler, DistributedGradScaler):
+                    active_optimizer.backward(grad_scaler.scale(loss), model)
+                    grad_scaler.step(
+                        active_optimizer,
+                        model,
+                        max_grad_norm=config.optimizer.clip_grad,
+                    )
+                elif grad_scaler is not None:
                     grad_scaler.scale(loss).backward()
                     grad_scaler.unscale_(active_optimizer)
                     _clip_gradients(model, active_optimizer, config.optimizer.clip_grad)
@@ -176,7 +171,7 @@ def train(
                     save_path is not None
                     and completed_step % config.checkpoints.checkpoint_interval == 0
                 ):
-                    _save_checkpoint_on_primary_rank(
+                    _save_checkpoint(
                         model,
                         active_optimizer,
                         completed_step,
@@ -200,7 +195,7 @@ def train(
         and config.checkpoints.save_final_state
         and final_step != last_saved_step
     ):
-        _save_checkpoint_on_primary_rank(
+        _save_checkpoint(
             model,
             active_optimizer,
             final_step,
@@ -231,11 +226,14 @@ def _autocast_context(
 def _create_grad_scaler(
     device: torch.device,
     dtype: torch.dtype,
-) -> torch.amp.GradScaler | None:
+    zero_stage: int,
+) -> torch.amp.GradScaler | DistributedGradScaler | None:
     """Create a scaler for CUDA fp16; bf16 and fp32 do not need scaling."""
 
     if device.type != "cuda" or dtype != torch.float16:
         return None
+    if zero_stage > 0:
+        return DistributedGradScaler("cuda")
     return torch.amp.GradScaler("cuda")
 
 
@@ -293,16 +291,18 @@ def _clip_gradients(
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
 
 
-def _save_checkpoint_on_primary_rank(
+def _save_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer | ZeroOptimizer,
     step: int,
     path: str | Path,
     distributed_info: DistributedInfo,
 ) -> None:
-    """Persist one checkpoint safely when replicated DDP ranks share a path."""
+    """Persist portable weights and per-rank ZeRO shards when needed."""
 
-    if distributed_info.rank == 0:
+    if isinstance(optimizer, ZeroOptimizer) and distributed_info.is_distributed:
+        save_checkpoint(model, optimizer, step, path)
+    elif distributed_info.rank == 0:
         save_checkpoint(model, optimizer, step, path)
     if distributed_info.is_distributed:
         dist.barrier()
