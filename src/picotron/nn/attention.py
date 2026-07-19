@@ -11,10 +11,11 @@ from torch.nn import functional as F
 
 from picotron.nn.rope import RotaryEmbedding
 from picotron.nn.triton_kernels.attention import triton_causal_attention
+from picotron.utils.hardware import AttentionBackend, detect_attention_backend
 
 
 class CausalSelfAttention(nn.Module):
-    """Multi-head self-attention with an eager causal attention path."""
+    """Multi-head self-attention with guarded optional backend acceleration."""
 
     def __init__(
         self,
@@ -52,6 +53,8 @@ class CausalSelfAttention(nn.Module):
         self.scale = 1.0 / math.sqrt(self.head_dim)
         self.use_triton_attention = use_triton_attention
         self._triton_attention_fallback_warned = False
+        self._xformers_attention_fallback_warned = False
+        self._sdpa_attention_fallback_warned = False
         self.rotary_embedding = (
             RotaryEmbedding(self.head_dim, rope_theta, use_triton_rope=use_triton_rope)
             if use_rope
@@ -81,7 +84,7 @@ class CausalSelfAttention(nn.Module):
         return self.output_projection(attention_output)
 
     def _apply_attention(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
-        """Use opt-in tiled Triton attention or the eager MHA/GQA fallback."""
+        """Select Triton, xFormers, SDPA, or eager attention safely."""
 
         if self.use_triton_attention:
             try:
@@ -102,6 +105,84 @@ class CausalSelfAttention(nn.Module):
 
         key = self._repeat_key_value_heads(key)
         value = self._repeat_key_value_heads(value)
+        backend = detect_attention_backend(query.device)
+        if backend.selected is AttentionBackend.XFORMERS:
+            try:
+                return self._apply_xformers_attention(query, key, value)
+            except Exception as error:
+                if not self._xformers_attention_fallback_warned:
+                    warnings.warn(
+                        f"xFormers attention unavailable; using fallback: {error}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    self._xformers_attention_fallback_warned = True
+
+        # FlashAttention detection remains an environment report only; this
+        # native attention implementation has no direct flash-attn call yet.
+        # SDPA may still select its own fused CUDA kernel where PyTorch permits.
+        if backend.sdpa_available:
+            try:
+                return self._apply_sdpa_attention(query, key, value)
+            except Exception as error:
+                if not self._sdpa_attention_fallback_warned:
+                    warnings.warn(
+                        f"SDPA attention unavailable; using eager fallback: {error}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    self._sdpa_attention_fallback_warned = True
+
+        return self._apply_eager_attention(query, key, value)
+
+    def _apply_xformers_attention(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+        """Apply xFormers memory-efficient causal attention with repeated GQA KV."""
+
+        import xformers.ops as xops
+        from xformers.ops.fmha.attn_bias import (
+            LocalAttentionFromBottomRightMask,
+            LowerTriangularMask,
+        )
+
+        attention_bias: object
+        if self.sliding_window_size is None:
+            attention_bias = LowerTriangularMask()
+        else:
+            attention_bias = LocalAttentionFromBottomRightMask(
+                window_left=self.sliding_window_size - 1,
+                window_right=0,
+            )
+
+        # xFormers expects (batch, sequence, heads, head_dim); repeating KV
+        # first retains the eager path's GQA semantics and its autograd support.
+        output = xops.memory_efficient_attention(
+            query.transpose(1, 2).contiguous(),
+            key.transpose(1, 2).contiguous(),
+            value.transpose(1, 2).contiguous(),
+            attn_bias=attention_bias,
+            p=0.0,
+        )
+        return output.transpose(1, 2)
+
+    def _apply_sdpa_attention(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+        """Use PyTorch SDPA with the same causal/sliding-window mask as eager."""
+
+        mask = self._causal_mask(
+            query.size(-2), query.device, self.sliding_window_size
+        )
+        return F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=mask,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=self.scale,
+        )
+
+    def _apply_eager_attention(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+        """Materialize causal scores only after all accelerated paths decline."""
+
         attention_scores = (query @ key.transpose(-2, -1)) * self.scale
         attention_scores = attention_scores.masked_fill(
             ~self._causal_mask(

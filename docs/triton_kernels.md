@@ -51,3 +51,13 @@ fails, it emits a warning and continues with the eager model. Checkpointing
 unwraps both DDP and the compiled wrapper, so `.safetensors` weights remain
 portable to an eager model. Actual T4 speed and compatibility still require
 a target-GPU test.
+
+## Attention backends
+
+`CausalSelfAttention` now consumes `detect_attention_backend()` at runtime.
+When xFormers is selected, it calls `xformers.ops.memory_efficient_attention`
+with causal masking; a failure falls through to PyTorch SDPA and then the
+manual eager path. GQA repeats KV heads before the xFormers call, preserving
+the native eager semantics and xFormers autograd support. FlashAttention is
+still detected but is not directly wired; its selected report currently falls
+through to SDPA.
