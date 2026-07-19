@@ -98,7 +98,13 @@ def train(
         config,
         total_steps=start_step + target_steps,
         plain_interval=config.logging.iteration_step_info_interval,
-    ) as display, FileLogger(config, method="pretraining") as file_logger:
+    ) as display, FileLogger(
+        config,
+        method="pretraining",
+        # One primary transcript avoids two DDP ranks concurrently appending
+        # to the same CSV and log paths.
+        enabled=distributed_info.rank == 0,
+    ) as file_logger:
         data_epoch = 0
         while len(losses) < target_steps:
             _set_data_epoch(data_loader, data_epoch)

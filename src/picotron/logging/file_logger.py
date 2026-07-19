@@ -33,13 +33,15 @@ class FileLogger:
         *,
         method: str,
         output_dir: str | Path | None = None,
+        enabled: bool | None = None,
     ) -> None:
         if not method:
             raise ValueError("method must be non-empty.")
         self.config = config
         self.method = method
         logging_config = config.logging if config is not None else None
-        self.enabled = logging_config.file_logging if logging_config is not None else True
+        configured_enabled = logging_config.file_logging if logging_config is not None else True
+        self.enabled = configured_enabled if enabled is None else enabled and configured_enabled
         configured_output_dir = (
             logging_config.file_logging_output_dir if logging_config is not None else "logs"
         )

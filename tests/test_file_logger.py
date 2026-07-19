@@ -108,3 +108,12 @@ def test_file_logger_adds_trainer_specific_metric_columns(tmp_path: Path) -> Non
         assert {"chosen_logprob", "rejected_logprob", "margin"} <= set(reader.fieldnames)
     transcript = (tmp_path / "dpo-file-logger-test" / "run.log").read_text(encoding="utf-8")
     assert "Triton fallback test warning" in transcript
+
+
+def test_file_logger_can_be_disabled_for_non_primary_ddp_ranks(tmp_path: Path) -> None:
+    config = _config(tmp_path, file_logging=True)
+
+    with FileLogger(config, method="pretraining", enabled=False) as file_logger:
+        file_logger.log_step(step=1, loss=1.0, learning_rate=1e-3, tokens_seen=8)
+
+    assert not (tmp_path / "file-logger-test" / "metrics.csv").exists()
