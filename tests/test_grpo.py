@@ -150,6 +150,18 @@ class _ChatTokenizer(_Tokenizer):
         return "42" if token_ids else ""
 
 
+class _StringChatTokenizer(_ChatTokenizer):
+    def apply_chat_template(self, messages, *, tokenize: bool, add_generation_prompt: bool):
+        assert tokenize and add_generation_prompt
+        assert messages == [{"role": "user", "content": "What is 6 times 7?"}]
+        return "user: What is 6 times 7?\nassistant:"
+
+    def encode(self, text: str, *, add_special_tokens: bool) -> list[int]:
+        assert text.endswith("assistant:")
+        assert not add_special_tokens
+        return [9, 1]
+
+
 def test_gsm8k_style_generation_uses_chat_template_and_is_non_empty() -> None:
     """GRPO must leave room for a textual assistant completion, not immediate EOS."""
 
@@ -166,3 +178,21 @@ def test_gsm8k_style_generation_uses_chat_template_and_is_non_empty() -> None:
     completion = tokenizer.decode(completion_ids.tolist(), skip_special_tokens=True)
     assert completion
     assert len(completion) <= 16
+
+
+def test_string_chat_template_is_tokenized_before_generation() -> None:
+    """Prevent formatted chat text from reaching torch.tensor in _generate."""
+
+    tokenizer = _StringChatTokenizer()
+    prompt_ids = _encode_prompt(tokenizer, "What is 6 times 7?", max_tokens=4)
+    assert prompt_ids == [9, 1]
+    assert all(isinstance(token_id, int) for token_id in prompt_ids)
+    generated = _generate(
+        _TinyGenerativePolicy(),
+        prompt_ids,
+        max_new_tokens=1,
+        temperature=1.0,
+        pad_token_id=0,
+        device=torch.device("cpu"),
+    )
+    assert generated.ndim == 1

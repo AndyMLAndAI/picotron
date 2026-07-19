@@ -307,17 +307,27 @@ def _encode_prompt(tokenizer: Any, prompt: str, *, max_tokens: int | None = None
 
     chat_template = getattr(tokenizer, "apply_chat_template", None)
     if callable(chat_template):
-        prompt_ids = list(
-            chat_template(
-                [{"role": "user", "content": prompt}],
-                tokenize=True,
-                add_generation_prompt=True,
-            )
+        formatted_prompt = chat_template(
+            [{"role": "user", "content": prompt}],
+            tokenize=True,
+            add_generation_prompt=True,
         )
+        # Some HF-compatible tokenizer wrappers return formatted text despite
+        # tokenize=True. Normalize both API variants before tensor creation.
+        if isinstance(formatted_prompt, str):
+            if not hasattr(tokenizer, "encode"):
+                raise TypeError("String chat templates require tokenizer.encode().")
+            prompt_ids = list(tokenizer.encode(formatted_prompt, add_special_tokens=False))
+        elif isinstance(formatted_prompt, Tensor):
+            prompt_ids = formatted_prompt.reshape(-1).tolist()
+        else:
+            prompt_ids = list(formatted_prompt)
     elif hasattr(tokenizer, "encode"):
         prompt_ids = list(tokenizer.encode(prompt, add_special_tokens=False))
     else:
         raise TypeError("tokenizer must provide encode() or apply_chat_template().")
+    if any(isinstance(token_id, bool) or not isinstance(token_id, int) for token_id in prompt_ids):
+        raise TypeError("Formatted GRPO prompts must tokenize to a sequence of integer token ids.")
     if max_tokens is not None:
         if max_tokens <= 0:
             raise ValueError("Model context limit leaves no room for GRPO completion tokens.")
