@@ -1,4 +1,4 @@
-"""Picotron SFT wiring sketch for the hybrid Qwen3.5-27B text model."""
+"""Picotron SFT wiring sketch for Qwen3.5's text-only forward path."""
 
 from __future__ import annotations
 
@@ -8,9 +8,11 @@ from picotron.config.config import PicotronConfig
 from picotron_sft import run_sft
 from picotron_sft.sft_trainer import _extract_logits
 
-# Dataset records: see docs/dataset_format.md. Model-specific: Qwen3.5 text defaults. The hybrid 3:1 linear-attention /
-# full-attention stack must be instantiated by Transformers/Qwen code, not by
-# Picotron. Real HF weights and the matching tokenizer are extension points.
+# Dataset records: see docs/dataset_format.md. The full Qwen3.5 checkpoint is
+# multimodal; load it with AutoModelForMultimodalLM for text-only training.
+# Picotron's generic load_model() uses AutoModelForCausalLM and does not load
+# this checkpoint. Its hybrid 3:1 linear/full-attention stack remains owned by
+# Transformers/Qwen code, while Picotron consumes its standard logits output.
 MODEL_ID = "Qwen/Qwen3.5-27B"
 MODEL_SPECIFIC_KWARGS = {
     "model_type": "qwen3_5",
