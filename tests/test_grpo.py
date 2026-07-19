@@ -39,12 +39,14 @@ class _TinyGenerativePolicy(nn.Module):
         self,
         input_ids: Tensor,
         *,
+        attention_mask: Tensor,
         max_new_tokens: int,
         do_sample: bool,
         temperature: float,
         pad_token_id: int,
     ) -> Tensor:
         del do_sample, pad_token_id
+        assert torch.equal(attention_mask, torch.ones_like(input_ids))
         generated = input_ids
         for _ in range(max_new_tokens):
             probabilities = torch.softmax(self.next_token_logits / temperature, dim=0)

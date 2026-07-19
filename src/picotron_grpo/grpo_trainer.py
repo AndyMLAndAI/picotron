@@ -104,6 +104,7 @@ class GRPOTrainer:
         self.model_kwargs = dict(model_kwargs or {})
         self.model.to(self.device)
         self.optimizer = optimizer or AdamW(self.model.parameters(), lr=learning_rate)
+        self._sample_completions_to_log = 3
 
         self.ref_model = copy.deepcopy(self.model) if ref_model is None else ref_model
         self.ref_model.to(self.device)
@@ -177,6 +178,7 @@ class GRPOTrainer:
                     raise ValueError("reward_fn must return finite numeric rewards.")
                 completions.append(generated)
                 rewards.append(reward)
+                self._log_sample_completion(prompt, completion, reward)
 
             input_ids, completion_mask = _pack_completions(
                 completions,
@@ -194,6 +196,17 @@ class GRPOTrainer:
             completion_mask=completion_mask,
             old_log_probabilities=old_log_probabilities.detach(),
             rewards=torch.tensor(rewards, dtype=torch.float32, device=self.device),
+        )
+
+    def _log_sample_completion(self, prompt: str, completion: str, reward: float) -> None:
+        """Print a few early samples so reward-data bugs are immediately visible."""
+
+        if self._sample_completions_to_log <= 0:
+            return
+        self._sample_completions_to_log -= 1
+        print(
+            "[GRPO sample] "
+            f"prompt={prompt[:160]!r} completion={completion[:400]!r} reward={reward:.3f}"
         )
 
     def _loss_and_metrics(self, group: _CompletionGroup) -> tuple[Tensor, dict[str, float]]:
@@ -303,8 +316,13 @@ def _generate(
     pad_token_id: int,
     device: torch.device,
 ) -> Tensor:
+    input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
+    # GRPO prompts have no padding, but HF generation cannot safely infer that
+    # when pad_token_id equals eos_token_id (the common SmolLM2 setup).
+    attention_mask = torch.ones_like(input_ids, dtype=torch.long)
     generated = model.generate(
-        torch.tensor([prompt_ids], dtype=torch.long, device=device),
+        input_ids=input_ids,
+        attention_mask=attention_mask,
         max_new_tokens=max_new_tokens,
         do_sample=True,
         temperature=temperature,
