@@ -58,6 +58,19 @@ def test_display_tty_simulation_does_not_crash() -> None:
             assert display._progress.tasks[display._progress_task].completed == 2
 
 
+def test_disabled_display_emits_no_console_output() -> None:
+    """Non-primary DDP ranks must not create a competing live display."""
+
+    config = _config()
+    output = StringIO()
+    console = Console(force_terminal=True, file=output) if Console else None
+    with TrainingDisplay(config, total_steps=2, console=console, enabled=False) as display:
+        display.update(step=1, loss=1.25, learning_rate=0.001, tokens_seen=16)
+
+    assert not display.use_live
+    assert output.getvalue() == ""
+
+
 def test_training_loss_trend_survives_display() -> None:
     config = _config()
     sequence = (

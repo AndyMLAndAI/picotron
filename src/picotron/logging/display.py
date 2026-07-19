@@ -51,6 +51,7 @@ class TrainingDisplay:
         console: Console | None = None,
         plain_interval: int = 10,
         loss_label: str = "loss",
+        enabled: bool = True,
     ) -> None:
         if plain_interval <= 0:
             raise ValueError("plain_interval must be positive.")
@@ -61,6 +62,7 @@ class TrainingDisplay:
         self.console = console if console is not None else Console() if _RICH_AVAILABLE else None
         self.plain_interval = plain_interval
         self.loss_label = loss_label
+        self.enabled = enabled
         self._live = None
         self._progress = None
         self._progress_task = None
@@ -74,9 +76,16 @@ class TrainingDisplay:
     def use_live(self) -> bool:
         """Whether this display will use Rich Live output."""
 
-        return bool(_RICH_AVAILABLE and self.console is not None and self.console.is_terminal)
+        return bool(
+            self.enabled
+            and _RICH_AVAILABLE
+            and self.console is not None
+            and self.console.is_terminal
+        )
 
     def __enter__(self) -> "TrainingDisplay":
+        if not self.enabled:
+            return self
         self._start_time = time.perf_counter()
         self._print_startup_banner()
         if self.use_live:
@@ -125,6 +134,8 @@ class TrainingDisplay:
     ) -> None:
         """Record and render one optimizer step with optional named metrics."""
 
+        if not self.enabled:
+            return
         self._last_values = {
             "step": step,
             "loss": loss,

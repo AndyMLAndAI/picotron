@@ -98,6 +98,7 @@ def train(
         config,
         total_steps=start_step + target_steps,
         plain_interval=config.logging.iteration_step_info_interval,
+        enabled=distributed_info.rank == 0,
     ) as display, FileLogger(
         config,
         method="pretraining",
