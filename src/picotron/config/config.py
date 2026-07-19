@@ -73,11 +73,19 @@ class TritonKernelsConfig:
     rmsnorm: bool = False
     swiglu: bool = False
     rope: bool = False
+    attention: bool = False
     cross_entropy: bool = False
     adamw: bool = False
 
     def __post_init__(self) -> None:
-        for field_name in ("rmsnorm", "swiglu", "rope", "cross_entropy", "adamw"):
+        for field_name in (
+            "rmsnorm",
+            "swiglu",
+            "rope",
+            "attention",
+            "cross_entropy",
+            "adamw",
+        ):
             _require_bool(field_name, getattr(self, field_name))
 
 
@@ -203,6 +211,7 @@ class ModelConfig:
             "use_triton_rmsnorm",
             "use_triton_swiglu",
             "use_triton_rope",
+            "use_triton_attention",
             "use_triton_cross_entropy",
             "use_triton_adamw",
         }

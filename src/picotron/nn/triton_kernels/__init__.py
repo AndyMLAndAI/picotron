@@ -1,6 +1,10 @@
 """Optional Triton kernels with safe PyTorch fallbacks at call sites."""
 
 from picotron.nn.triton_kernels.adamw import AdamWStepWithFallback, TritonAdamWUnavailable
+from picotron.nn.triton_kernels.attention import (
+    TritonAttentionUnavailable,
+    triton_causal_attention,
+)
 from picotron.nn.triton_kernels.cross_entropy import (
     CrossEntropyWithFallback,
     TritonCrossEntropyUnavailable,
@@ -13,11 +17,13 @@ from picotron.nn.triton_kernels.swiglu import TritonSwiGLUUnavailable, triton_sw
 __all__ = [
     "AdamWStepWithFallback",
     "CrossEntropyWithFallback",
+    "TritonAttentionUnavailable",
     "TritonAdamWUnavailable",
     "TritonCrossEntropyUnavailable",
     "TritonRMSNormUnavailable",
     "TritonRoPEUnavailable",
     "TritonSwiGLUUnavailable",
+    "triton_causal_attention",
     "triton_apply_rotary_embedding",
     "triton_cross_entropy",
     "triton_rms_norm",

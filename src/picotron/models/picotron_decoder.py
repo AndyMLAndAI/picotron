@@ -235,4 +235,5 @@ def _build_attention(
         use_rope=use_rope,
         rope_theta=_rope_theta(config),
         use_triton_rope=config.model.triton_kernels.rope,
+        use_triton_attention=config.model.triton_kernels.attention,
     )

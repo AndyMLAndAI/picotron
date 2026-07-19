@@ -97,6 +97,7 @@ model:
     rmsnorm: true
     swiglu: true
     rope: true
+    attention: true
     cross_entropy: true
     adamw: true
   model_config:
@@ -172,6 +173,7 @@ general:
             config.model.triton_kernels.rmsnorm,
             config.model.triton_kernels.swiglu,
             config.model.triton_kernels.rope,
+            config.model.triton_kernels.attention,
             config.model.triton_kernels.cross_entropy,
             config.model.triton_kernels.adamw,
         )

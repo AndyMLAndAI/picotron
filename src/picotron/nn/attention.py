@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+import warnings
 
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
 from picotron.nn.rope import RotaryEmbedding
+from picotron.nn.triton_kernels.attention import triton_causal_attention
 
 
 class CausalSelfAttention(nn.Module):
@@ -24,6 +26,7 @@ class CausalSelfAttention(nn.Module):
         use_rope: bool = True,
         rope_theta: float = 10_000.0,
         use_triton_rope: bool = False,
+        use_triton_attention: bool = False,
     ) -> None:
         super().__init__()
         if hidden_size <= 0:
@@ -47,6 +50,8 @@ class CausalSelfAttention(nn.Module):
         self.sliding_window_size = sliding_window_size
         self.head_dim = hidden_size // num_attention_heads
         self.scale = 1.0 / math.sqrt(self.head_dim)
+        self.use_triton_attention = use_triton_attention
+        self._triton_attention_fallback_warned = False
         self.rotary_embedding = (
             RotaryEmbedding(self.head_dim, rope_theta, use_triton_rope=use_triton_rope)
             if use_rope
@@ -68,24 +73,44 @@ class CausalSelfAttention(nn.Module):
         value = self._split_heads(self.value_projection(hidden_states), self.num_key_value_heads)
         if self.rotary_embedding is not None:
             query, key = self.rotary_embedding(query, key)
-        key = self._repeat_key_value_heads(key)
-        value = self._repeat_key_value_heads(value)
-
-        attention_scores = (query @ key.transpose(-2, -1)) * self.scale
-        attention_scores = attention_scores.masked_fill(
-            ~self._causal_mask(
-                hidden_states.size(1), hidden_states.device, self.sliding_window_size
-            ),
-            torch.finfo(attention_scores.dtype).min,
-        )
-        attention_weights = F.softmax(attention_scores, dim=-1, dtype=torch.float32)
-        attention_output = attention_weights.to(value.dtype) @ value
-
+        attention_output = self._apply_attention(query, key, value)
         batch_size, _, sequence_length, _ = attention_output.shape
         attention_output = attention_output.transpose(1, 2).contiguous().view(
             batch_size, sequence_length, self.hidden_size
         )
         return self.output_projection(attention_output)
+
+    def _apply_attention(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+        """Use opt-in tiled Triton attention or the eager MHA/GQA fallback."""
+
+        if self.use_triton_attention:
+            try:
+                return triton_causal_attention(
+                    query.contiguous(),
+                    key.contiguous(),
+                    value.contiguous(),
+                    sliding_window_size=self.sliding_window_size,
+                )
+            except Exception as error:
+                if not self._triton_attention_fallback_warned:
+                    warnings.warn(
+                        f"Triton attention unavailable; using eager fallback: {error}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    self._triton_attention_fallback_warned = True
+
+        key = self._repeat_key_value_heads(key)
+        value = self._repeat_key_value_heads(value)
+        attention_scores = (query @ key.transpose(-2, -1)) * self.scale
+        attention_scores = attention_scores.masked_fill(
+            ~self._causal_mask(
+                query.size(-2), query.device, self.sliding_window_size
+            ),
+            torch.finfo(attention_scores.dtype).min,
+        )
+        attention_weights = F.softmax(attention_scores, dim=-1, dtype=torch.float32)
+        return attention_weights.to(value.dtype) @ value
 
     def _split_heads(self, projected_states: Tensor, num_heads: int) -> Tensor:
         batch_size, sequence_length, _ = projected_states.shape
