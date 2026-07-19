@@ -14,6 +14,7 @@ from torch.optim import AdamW
 
 from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
+from picotron.logging.file_logger import FileLogger
 from picotron.nn.triton_kernels.adamw import AdamWStepWithFallback
 from picotron.nn.triton_kernels.cross_entropy import CrossEntropyWithFallback
 from picotron.parallel.ddp import DistributedInfo, initialize_distributed, wrap_model
@@ -109,7 +110,7 @@ def train(
         config,
         total_steps=start_step + target_steps,
         plain_interval=config.logging.iteration_step_info_interval,
-    ) as display:
+    ) as display, FileLogger(config, method="pretraining") as file_logger:
         while len(losses) < target_steps:
             batches_this_pass = 0
             for batch in data_loader:
@@ -158,6 +159,12 @@ def train(
                 losses.append(loss_value)
                 completed_step = start_step + len(losses)
                 display.update(
+                    step=completed_step,
+                    loss=loss_value,
+                    learning_rate=learning_rate,
+                    tokens_seen=completed_step * input_ids.numel(),
+                )
+                file_logger.log_step(
                     step=completed_step,
                     loss=loss_value,
                     learning_rate=learning_rate,

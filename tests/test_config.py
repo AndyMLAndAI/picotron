@@ -150,6 +150,8 @@ data:
 logging:
   log_level: INFO
   iteration_step_info_interval: 5
+  file_logging: true
+  file_logging_output_dir: /tmp/logs
 general:
   project: picotron
   run: advanced-config
@@ -204,6 +206,8 @@ general:
     assert config.data.vocab_size == 64
     assert config.logging.log_level == "INFO"
     assert config.logging.iteration_step_info_interval == 5
+    assert config.logging.file_logging
+    assert config.logging.file_logging_output_dir == "/tmp/logs"
     assert config.general.run == "advanced-config"
     assert config.general.seed == 17
 

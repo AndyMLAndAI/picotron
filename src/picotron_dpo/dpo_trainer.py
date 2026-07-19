@@ -14,7 +14,9 @@ from torch.nn import functional as F
 from torch.optim import AdamW, Optimizer
 from torch.utils.data import DataLoader, Dataset
 
+from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
+from picotron.logging.file_logger import FileLogger
 from picotron.serialize.checkpoint import load_checkpoint
 from picotron_dpo.data import (
     PreferenceDataset,
@@ -80,7 +82,8 @@ class DPOTrainer:
         losses: list[float] = []
 
         display = _make_display(self.display_config, step_limit)
-        with display:
+        file_config = self.display_config if isinstance(self.display_config, PicotronConfig) else None
+        with display, FileLogger(file_config, method="dpo") as file_logger:
             for batch in self.data_loader:
                 if step_limit is not None and len(losses) >= step_limit:
                     break
@@ -93,6 +96,17 @@ class DPOTrainer:
                 loss_value = loss.detach().cpu().item()
                 losses.append(loss_value)
                 display.update(
+                    step=len(losses),
+                    loss=loss_value,
+                    learning_rate=self.optimizer.param_groups[0]["lr"],
+                    tokens_seen=len(losses)
+                    * (
+                        prepared["chosen_input_ids"].numel()
+                        + prepared["rejected_input_ids"].numel()
+                    ),
+                    metrics=metrics,
+                )
+                file_logger.log_step(
                     step=len(losses),
                     loss=loss_value,
                     learning_rate=self.optimizer.param_groups[0]["lr"],

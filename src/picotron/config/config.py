@@ -457,6 +457,8 @@ class LoggingConfig:
 
     log_level: str = "INFO"
     iteration_step_info_interval: int = 1
+    file_logging: bool = True
+    file_logging_output_dir: str = "logs"
 
     def __post_init__(self) -> None:
         if self.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
@@ -466,6 +468,8 @@ class LoggingConfig:
         _require_positive_int(
             "iteration_step_info_interval", self.iteration_step_info_interval
         )
+        _require_bool("file_logging", self.file_logging)
+        _require_optional_path("file_logging_output_dir", self.file_logging_output_dir)
 
 
 @dataclass(frozen=True, slots=True)

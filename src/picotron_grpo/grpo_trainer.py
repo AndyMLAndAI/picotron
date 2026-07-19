@@ -15,7 +15,9 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torch.optim import AdamW, Optimizer
 
+from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
+from picotron.logging.file_logger import FileLogger
 
 
 RewardFunction = Callable[[str, str], float]
@@ -119,7 +121,10 @@ class GRPOTrainer:
         total_steps = len(self.prompts) if step_limit is None else step_limit
         losses: list[float] = []
 
-        with _make_display(self.display_config, total_steps) as display:
+        file_config = self.display_config if isinstance(self.display_config, PicotronConfig) else None
+        with _make_display(self.display_config, total_steps) as display, FileLogger(
+            file_config, method="grpo"
+        ) as file_logger:
             for step, prompt in enumerate(prompt_stream, start=1):
                 completion_group = self._sample_completion_group(prompt)
                 self.model.train()
@@ -131,6 +136,13 @@ class GRPOTrainer:
                 loss_value = loss.detach().float().cpu().item()
                 losses.append(loss_value)
                 display.update(
+                    step=step,
+                    loss=loss_value,
+                    learning_rate=self.optimizer.param_groups[0]["lr"],
+                    tokens_seen=step * completion_group.input_ids.numel(),
+                    metrics=metrics,
+                )
+                file_logger.log_step(
                     step=step,
                     loss=loss_value,
                     learning_rate=self.optimizer.param_groups[0]["lr"],
