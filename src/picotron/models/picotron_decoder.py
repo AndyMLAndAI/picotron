@@ -92,6 +92,7 @@ class DecoderBlock(nn.Module):
                 model_config.hidden_size,
                 model_config.intermediate_size,
                 model_config.moe_config,
+                use_triton_swiglu=triton_kernels.swiglu,
             )
             if model_config.moe_config is not None
             else SwiGLU(

@@ -16,7 +16,11 @@ from picotron.nn.triton_kernels.rmsnorm import (
     triton_rms_norm,
 )
 from picotron.nn.triton_kernels.rope import TritonRoPEUnavailable, triton_apply_rotary_embedding
-from picotron.nn.triton_kernels.swiglu import TritonSwiGLUUnavailable, triton_swiglu
+from picotron.nn.triton_kernels.swiglu import (
+    TritonSwiGLUUnavailable,
+    swiglu_with_pytorch_forward,
+    triton_swiglu,
+)
 
 __all__ = [
     "AdamWStepWithFallback",
@@ -32,5 +36,6 @@ __all__ = [
     "triton_cross_entropy",
     "triton_rms_norm",
     "triton_swiglu",
+    "swiglu_with_pytorch_forward",
     "rms_norm_with_pytorch_forward",
 ]

@@ -1,9 +1,10 @@
-"""Optional fused Triton SwiGLU activation inference-forward kernel."""
+"""Optional fused Triton SwiGLU activation with a correct autograd backward."""
 
 from __future__ import annotations
 
 import torch
 from torch import Tensor
+from torch.nn import functional as F
 
 try:
     import triton
@@ -33,16 +34,51 @@ if _TRITON_AVAILABLE:
         tl.store(output_ptr + offsets, output.to(gate.dtype.element_ty), mask=mask)
 
 
-def triton_swiglu(gate: Tensor, up: Tensor) -> Tensor:
-    """Run fused SwiGLU activation or raise ``TritonSwiGLUUnavailable`` safely.
+def _run_triton_forward(gate: Tensor, up: Tensor) -> Tensor:
+    """Launch the fused elementwise SiLU-times-up kernel."""
 
-    The optional kernel is inference-forward only; autograd uses the native path.
-    """
+    assert triton is not None
+    output = torch.empty_like(gate)
+    block_size = 256
+    _swiglu_kernel[(triton.cdiv(gate.numel(), block_size),)](
+        gate, up, output, gate.numel(), BLOCK_SIZE=block_size
+    )
+    return output
+
+
+class _SwiGLUAutogradFunction(torch.autograd.Function):
+    """Fused Triton forward with a directly auditable PyTorch backward."""
+
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        gate: Tensor,
+        up: Tensor,
+        use_triton_forward: bool,
+    ) -> Tensor:
+        ctx.save_for_backward(gate, up)
+        if use_triton_forward:
+            return _run_triton_forward(gate, up)
+        return F.silu(gate) * up
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx, grad_output: Tensor
+    ) -> tuple[Tensor | None, Tensor | None, None]:
+        gate, up = ctx.saved_tensors
+        sigmoid_gate = torch.sigmoid(gate)
+        silu_gate = gate * sigmoid_gate
+        silu_derivative = sigmoid_gate * (1 + gate * (1 - sigmoid_gate))
+        grad_gate = grad_output * up * silu_derivative
+        grad_up = grad_output * silu_gate
+        return grad_gate, grad_up, None
+
+
+def _validate_triton_inputs(gate: Tensor, up: Tensor) -> None:
+    """Validate Triton launch constraints, without rejecting autograd."""
 
     if not _TRITON_AVAILABLE:
         raise TritonSwiGLUUnavailable("Triton is not installed.")
-    if torch.is_grad_enabled() and (gate.requires_grad or up.requires_grad):
-        raise TritonSwiGLUUnavailable("Triton SwiGLU currently supports no-grad inference only.")
     if not gate.is_cuda or not up.is_cuda:
         raise TritonSwiGLUUnavailable("Triton SwiGLU requires CUDA tensors.")
     if torch.cuda.get_device_capability(gate.device)[0] < 7:
@@ -50,9 +86,15 @@ def triton_swiglu(gate: Tensor, up: Tensor) -> Tensor:
     if gate.shape != up.shape or not gate.is_contiguous() or not up.is_contiguous():
         raise TritonSwiGLUUnavailable("Triton SwiGLU requires matching contiguous inputs.")
 
-    output = torch.empty_like(gate)
-    block_size = 256
-    _swiglu_kernel[(triton.cdiv(gate.numel(), block_size),)](
-        gate, up, output, gate.numel(), BLOCK_SIZE=block_size
-    )
-    return output
+
+def triton_swiglu(gate: Tensor, up: Tensor) -> Tensor:
+    """Run fused SwiGLU forward with a mathematically exact PyTorch backward."""
+
+    _validate_triton_inputs(gate, up)
+    return _SwiGLUAutogradFunction.apply(gate, up, True)
+
+
+def swiglu_with_pytorch_forward(gate: Tensor, up: Tensor) -> Tensor:
+    """Exercise the custom backward on CPU without requiring Triton or CUDA."""
+
+    return _SwiGLUAutogradFunction.apply(gate, up, False)

@@ -22,15 +22,14 @@ compiled or can be used for training.
 
 ## Current training status
 
-RMSNorm uses the fused Triton forward during autograd and a mathematically
-equivalent PyTorch backward. It is therefore the only shipped Triton option
-that can accelerate training today, although its real T4 benefit must be
-measured. SwiGLU, RoPE, causal-attention, and cross-entropy remain
-forward/no-grad inference paths and deliberately fall back during autograd.
-The AdamW Triton path is a guarded stub and always uses `torch.optim.AdamW`.
+RMSNorm and SwiGLU use fused Triton forwards during autograd with
+mathematically equivalent PyTorch backwards. They can therefore accelerate
+training, although their real T4 benefit must be measured. RoPE,
+causal-attention, and cross-entropy remain forward/no-grad inference paths
+and deliberately fall back during autograd. The AdamW Triton path is a
+guarded stub and always uses `torch.optim.AdamW`.
 
-The dense-SwiGLU flag applies to dense decoder blocks. MoE expert SwiGLU
-blocks currently use their PyTorch implementation.
+The SwiGLU flag applies to both dense decoder blocks and MoE expert FFNs.
 
 Every kernel is runtime-guarded: an unavailable package, incompatible device,
 compile failure, or execution failure falls back to PyTorch rather than

@@ -13,12 +13,24 @@ from picotron.nn.feedforward import SwiGLU
 class MoEFeedForward(nn.Module):
     """Route each token to weighted top-k SwiGLU experts."""
 
-    def __init__(self, hidden_size: int, intermediate_size: int, config: MoEConfig) -> None:
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        config: MoEConfig,
+        *,
+        use_triton_swiglu: bool = False,
+    ) -> None:
         super().__init__()
         self.config = config
         self.router = nn.Linear(hidden_size, config.num_experts, bias=False)
         self.experts = nn.ModuleList(
-            SwiGLU(hidden_size, intermediate_size) for _ in range(config.num_experts)
+            SwiGLU(
+                hidden_size,
+                intermediate_size,
+                use_triton_swiglu=use_triton_swiglu,
+            )
+            for _ in range(config.num_experts)
         )
         self.last_routing_indices: Tensor | None = None
 
@@ -51,4 +63,3 @@ class MoEFeedForward(nn.Module):
         ).mean(dim=0)
         balancing_loss = self.config.num_experts * torch.sum(expert_importance * top_one_load)
         return balancing_loss * self.config.aux_loss_coefficient
-
