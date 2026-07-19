@@ -208,7 +208,7 @@ def _as_preference_dataloader(
                 examples, pad_token_id=infer_pad_token_id(active_tokenizer)
             ),
         )
-    if isinstance(dataset, Dataset):
+    if isinstance(dataset, Dataset) or _is_map_style_dataset(dataset):
         if tokenizer is not None:
             text_dataset = PreferenceDataset(dataset, tokenizer, max_length=max_length)
             return DataLoader(
@@ -231,6 +231,12 @@ def _as_preference_dataloader(
             ),
         )
     return dataset
+
+
+def _is_map_style_dataset(dataset: object) -> bool:
+    """Recognize Hugging Face-style datasets without importing datasets."""
+
+    return hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__")
 
 
 def _prepare_batch(batch: Mapping[str, Tensor], device: torch.device) -> dict[str, Tensor]:

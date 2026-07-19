@@ -8,7 +8,7 @@ from picotron.config.config import PicotronConfig
 from picotron_sft import run_sft
 from picotron_sft.sft_trainer import _extract_logits
 
-# Model-specific: Qwen3.5 text defaults. The hybrid 3:1 linear-attention /
+# Dataset records: see docs/dataset_format.md. Model-specific: Qwen3.5 text defaults. The hybrid 3:1 linear-attention /
 # full-attention stack must be instantiated by Transformers/Qwen code, not by
 # Picotron. Real HF weights and the matching tokenizer are extension points.
 MODEL_ID = "Qwen/Qwen3.5-27B"

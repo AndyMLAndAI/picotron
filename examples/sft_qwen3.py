@@ -8,7 +8,7 @@ from picotron.config.config import PicotronConfig
 from picotron_sft import run_sft
 from picotron_sft.sft_trainer import _extract_logits
 
-# Model-specific: these are Qwen3-8B dimensions. A real run must provide the
+# Dataset records: see docs/dataset_format.md. Model-specific: these are Qwen3-8B dimensions. A real run must provide the
 # HF weights/tokenizer and preserve Qwen chat-template tokenization. Picotron
 # SFT generically handles causal labels, checkpoint restoration, and runtime.
 MODEL_ID = "Qwen/Qwen3-8B"
