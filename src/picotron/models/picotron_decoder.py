@@ -7,6 +7,7 @@ import warnings
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint
 
 from picotron.config.config import PicotronConfig
 from picotron.nn.attention import CausalSelfAttention
@@ -102,15 +103,23 @@ class DecoderBlock(nn.Module):
         self.auxiliary_loss: Tensor | None = None
 
     def forward(self, hidden_states: Tensor) -> Tensor:
+        """Return transformed states while retaining the legacy block interface."""
+
+        hidden_states, auxiliary_loss = self.forward_with_auxiliary_loss(hidden_states)
+        self.auxiliary_loss = auxiliary_loss
+        return hidden_states
+
+    def forward_with_auxiliary_loss(self, hidden_states: Tensor) -> tuple[Tensor, Tensor | None]:
+        """Return block states and its differentiable MoE auxiliary loss, if any."""
+
         hidden_states = hidden_states + self._apply_causal_attention(
             self.attention_norm(hidden_states)
         )
         mlp_output = self.mlp(self.mlp_norm(hidden_states))
         if isinstance(self.mlp, MoEFeedForward):
-            mlp_output, self.auxiliary_loss = mlp_output
-        else:
-            self.auxiliary_loss = None
-        return hidden_states + mlp_output
+            mlp_output, auxiliary_loss = mlp_output
+            return hidden_states + mlp_output, auxiliary_loss
+        return hidden_states + mlp_output, None
 
     def _apply_causal_attention(self, hidden_states: Tensor) -> Tensor:
         """Apply the swappable causal-attention implementation."""
@@ -133,6 +142,7 @@ class PicotronDecoderModel(nn.Module):
         triton_kernels = config.model.triton_kernels
         use_triton_rmsnorm = triton_kernels.rmsnorm
         self.position_embedding_type = _position_embedding_type(config)
+        self.gradient_checkpointing = model_config.gradient_checkpointing
         self.token_embeddings = nn.Embedding(
             model_config.vocab_size, model_config.hidden_size
         )
@@ -179,13 +189,34 @@ class PicotronDecoderModel(nn.Module):
 
         auxiliary_losses: list[Tensor] = []
         for layer in self.layers:
-            hidden_states = layer(hidden_states)
-            if layer.auxiliary_loss is not None:
-                auxiliary_losses.append(layer.auxiliary_loss)
+            hidden_states, auxiliary_loss = self._run_layer(layer, hidden_states)
+            layer.auxiliary_loss = auxiliary_loss
+            if auxiliary_loss is not None:
+                auxiliary_losses.append(auxiliary_loss)
 
         self.auxiliary_loss = sum(auxiliary_losses) if auxiliary_losses else None
 
         return self.output_projection(self.final_norm(hidden_states))
+
+    def _run_layer(
+        self, layer: DecoderBlock, hidden_states: Tensor
+    ) -> tuple[Tensor, Tensor | None]:
+        """Checkpoint a block only while training and preserve MoE aux gradients."""
+
+        if not (self.gradient_checkpointing and self.training and torch.is_grad_enabled()):
+            return layer.forward_with_auxiliary_loss(hidden_states)
+        if isinstance(layer.mlp, MoEFeedForward):
+            return checkpoint(
+                layer.forward_with_auxiliary_loss,
+                hidden_states,
+                use_reentrant=False,
+            )
+        checkpointed_states = checkpoint(
+            layer.forward,
+            hidden_states,
+            use_reentrant=False,
+        )
+        return checkpointed_states, None
 
     def _validate_input_ids(self, input_ids: Tensor) -> None:
         if input_ids.ndim != 2:

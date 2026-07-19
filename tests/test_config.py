@@ -118,6 +118,7 @@ model:
     kv_lora_rank: 8
     tie_word_embeddings: true
     position_embedding_type: learned
+    gradient_checkpointing: true
     model_kwargs:
       head_dim: 8
       layer_pattern: 3:1 GatedDeltaNet linear_attention/full_attention
@@ -189,6 +190,7 @@ general:
     assert model_config.kv_lora_rank == 8
     assert model_config.tie_word_embeddings
     assert model_config.position_embedding_type == "learned"
+    assert model_config.gradient_checkpointing
     assert model_config.moe_config is not None
     assert model_config.moe_config.num_experts == 4
     assert model_config.rope_theta == 500000.0

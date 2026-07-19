@@ -107,6 +107,7 @@ class ModelConfig:
     kv_lora_rank: int | None = None
     tie_word_embeddings: bool = False
     position_embedding_type: str = "rope"
+    gradient_checkpointing: bool = False
     model_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -158,6 +159,7 @@ class ModelConfig:
                 "'position_embedding_type' must be either 'rope' or 'learned'."
             )
         _require_bool("tie_word_embeddings", self.tie_word_embeddings)
+        _require_bool("gradient_checkpointing", self.gradient_checkpointing)
 
         if self.kv_lora_rank is not None:
             _require_positive_int("kv_lora_rank", self.kv_lora_rank)
@@ -208,6 +210,7 @@ class ModelConfig:
             "kv_lora_rank",
             "tie_word_embeddings",
             "position_embedding_type",
+            "gradient_checkpointing",
             "use_triton_rmsnorm",
             "use_triton_swiglu",
             "use_triton_rope",
