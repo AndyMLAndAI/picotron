@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from itertools import cycle, islice
+from numbers import Integral
 from typing import Any
 
 import torch
@@ -326,8 +327,12 @@ def _encode_prompt(tokenizer: Any, prompt: str, *, max_tokens: int | None = None
         prompt_ids = list(tokenizer.encode(prompt, add_special_tokens=False))
     else:
         raise TypeError("tokenizer must provide encode() or apply_chat_template().")
-    if any(isinstance(token_id, bool) or not isinstance(token_id, int) for token_id in prompt_ids):
+    if any(
+        isinstance(token_id, bool) or not isinstance(token_id, Integral)
+        for token_id in prompt_ids
+    ):
         raise TypeError("Formatted GRPO prompts must tokenize to a sequence of integer token ids.")
+    prompt_ids = [int(token_id) for token_id in prompt_ids]
     if max_tokens is not None:
         if max_tokens <= 0:
             raise ValueError("Model context limit leaves no room for GRPO completion tokens.")
