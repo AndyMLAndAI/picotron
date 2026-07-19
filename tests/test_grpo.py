@@ -8,6 +8,7 @@ import torch
 from torch import Tensor, nn
 
 from picotron_grpo import GRPOTrainer, group_relative_advantages, run_grpo
+from picotron_grpo.grpo_trainer import _encode_prompt, _generate
 
 
 class _Tokenizer:
@@ -39,14 +40,16 @@ class _TinyGenerativePolicy(nn.Module):
         self,
         input_ids: Tensor,
         *,
-        attention_mask: Tensor,
+        attention_mask: Tensor | None = None,
         max_new_tokens: int,
         do_sample: bool,
         temperature: float,
+        min_new_tokens: int,
         pad_token_id: int,
     ) -> Tensor:
-        del do_sample, pad_token_id
-        assert torch.equal(attention_mask, torch.ones_like(input_ids))
+        del do_sample, min_new_tokens, pad_token_id
+        if attention_mask is not None:
+            assert torch.equal(attention_mask, torch.ones_like(input_ids))
         generated = input_ids
         for _ in range(max_new_tokens):
             probabilities = torch.softmax(self.next_token_logits / temperature, dim=0)
@@ -69,6 +72,7 @@ def _reward_rate(model: _TinyGenerativePolicy, samples: int = 256) -> float:
                 max_new_tokens=1,
                 do_sample=True,
                 temperature=1.0,
+                min_new_tokens=1,
                 pad_token_id=0,
             )[0, -1].item() == 2)
     return rewarded / samples
@@ -133,3 +137,32 @@ def test_grpo_increases_directional_reward_rate() -> None:
     print(f"GRPO rewarded completion rate: before={before:.3f}, after={after:.3f}")
     assert len(losses) == 150
     assert after > before + 0.15
+
+
+class _ChatTokenizer(_Tokenizer):
+    def apply_chat_template(self, messages, *, tokenize: bool, add_generation_prompt: bool):
+        assert tokenize and add_generation_prompt
+        assert messages == [{"role": "user", "content": "What is 6 times 7?"}]
+        return [9, 1]
+
+    def decode(self, token_ids: list[int], *, skip_special_tokens: bool) -> str:
+        del skip_special_tokens
+        return "42" if token_ids else ""
+
+
+def test_gsm8k_style_generation_uses_chat_template_and_is_non_empty() -> None:
+    """GRPO must leave room for a textual assistant completion, not immediate EOS."""
+
+    tokenizer = _ChatTokenizer()
+    prompt_ids = _encode_prompt(tokenizer, "What is 6 times 7?", max_tokens=4)
+    completion_ids = _generate(
+        _TinyGenerativePolicy(),
+        prompt_ids,
+        max_new_tokens=1,
+        temperature=1.0,
+        pad_token_id=0,
+        device=torch.device("cpu"),
+    )[len(prompt_ids) :]
+    completion = tokenizer.decode(completion_ids.tolist(), skip_special_tokens=True)
+    assert completion
+    assert len(completion) <= 16

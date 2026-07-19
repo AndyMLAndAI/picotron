@@ -155,7 +155,11 @@ class GRPOTrainer:
     def _sample_completion_group(self, prompt: str) -> _CompletionGroup:
         """Sample one group using the pre-update policy and score each completion."""
 
-        prompt_ids = _encode_prompt(self.tokenizer, prompt)
+        prompt_ids = _encode_prompt(
+            self.tokenizer,
+            prompt,
+            max_tokens=_prompt_token_budget(self.model, self.max_new_tokens),
+        )
         completions: list[Tensor] = []
         rewards: list[float] = []
         self.model.eval()
@@ -298,13 +302,39 @@ def group_relative_advantages(rewards: Tensor, epsilon: float = 1e-6) -> Tensor:
     return (rewards - rewards.mean()) / (rewards.std(unbiased=False) + epsilon)
 
 
-def _encode_prompt(tokenizer: Any, prompt: str) -> list[int]:
-    if not hasattr(tokenizer, "encode"):
-        raise TypeError("tokenizer must provide encode(text, add_special_tokens=False).")
-    prompt_ids = list(tokenizer.encode(prompt, add_special_tokens=False))
+def _encode_prompt(tokenizer: Any, prompt: str, *, max_tokens: int | None = None) -> list[int]:
+    """Format a user turn and reserve room for a generated assistant reply."""
+
+    chat_template = getattr(tokenizer, "apply_chat_template", None)
+    if callable(chat_template):
+        prompt_ids = list(
+            chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=True,
+                add_generation_prompt=True,
+            )
+        )
+    elif hasattr(tokenizer, "encode"):
+        prompt_ids = list(tokenizer.encode(prompt, add_special_tokens=False))
+    else:
+        raise TypeError("tokenizer must provide encode() or apply_chat_template().")
+    if max_tokens is not None:
+        if max_tokens <= 0:
+            raise ValueError("Model context limit leaves no room for GRPO completion tokens.")
+        prompt_ids = prompt_ids[-max_tokens:]
     if not prompt_ids:
         raise ValueError("Each prompt must tokenize to at least one token.")
     return prompt_ids
+
+
+def _prompt_token_budget(model: nn.Module, max_new_tokens: int) -> int | None:
+    """Reserve completion capacity under an HF model's finite context length."""
+
+    config = getattr(model, "config", None)
+    context_limit = getattr(config, "max_position_embeddings", None)
+    if isinstance(context_limit, int) and context_limit > 0:
+        return context_limit - max_new_tokens
+    return None
 
 
 def _generate(
@@ -326,6 +356,7 @@ def _generate(
         max_new_tokens=max_new_tokens,
         do_sample=True,
         temperature=temperature,
+        min_new_tokens=1,
         pad_token_id=pad_token_id,
     )
     if not isinstance(generated, Tensor) or generated.ndim != 2 or generated.size(0) != 1:
