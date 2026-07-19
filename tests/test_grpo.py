@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 
-import numpy as np
 import torch
 from torch import Tensor, nn
 
@@ -163,10 +162,24 @@ class _StringChatTokenizer(_ChatTokenizer):
         return [9, 1]
 
 
-class _NumpyTokenChatTokenizer(_StringChatTokenizer):
+class _ConvertibleTokenChatTokenizer(_StringChatTokenizer):
     def encode(self, text: str, *, add_special_tokens: bool):
         del text, add_special_tokens
-        return [np.int64(9), np.int64(1)]
+        return ["9", "1"]
+
+
+class _BatchEncodingChatTokenizer(_ChatTokenizer):
+    """Mirrors fast-tokenizer ``BatchEncoding`` output with a batch dimension."""
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tokenize: bool,
+        add_generation_prompt: bool,
+    ) -> dict[str, list[list[int]]]:
+        del messages, tokenize, add_generation_prompt
+        return {"input_ids": [[9, 1]]}
 
 
 def test_gsm8k_style_generation_uses_chat_template_and_is_non_empty() -> None:
@@ -205,11 +218,20 @@ def test_string_chat_template_is_tokenized_before_generation() -> None:
     assert generated.ndim == 1
 
 
-def test_numpy_integer_chat_token_ids_are_normalized() -> None:
-    """NumPy integer scalars are valid tokenizer output, not malformed tokens."""
+def test_convertible_chat_token_ids_are_normalized() -> None:
+    """Any tokenizer scalar accepted by int() becomes a native token id."""
 
     prompt_ids = _encode_prompt(
-        _NumpyTokenChatTokenizer(), "What is 6 times 7?", max_tokens=4
+        _ConvertibleTokenChatTokenizer(), "What is 6 times 7?", max_tokens=4
     )
+    assert prompt_ids == [9, 1]
+    assert all(type(token_id) is int for token_id in prompt_ids)
+
+
+def test_batch_encoding_chat_template_is_unwrapped_to_token_ids() -> None:
+    """Fast-tokenizer mappings must not be iterated as their string keys."""
+
+    prompt_ids = _encode_prompt(_BatchEncodingChatTokenizer(), "What is 6 times 7?")
+
     assert prompt_ids == [9, 1]
     assert all(type(token_id) is int for token_id in prompt_ids)

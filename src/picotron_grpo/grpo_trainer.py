@@ -8,7 +8,6 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from itertools import cycle, islice
-from numbers import Integral
 from typing import Any
 
 import torch
@@ -308,31 +307,73 @@ def _encode_prompt(tokenizer: Any, prompt: str, *, max_tokens: int | None = None
 
     chat_template = getattr(tokenizer, "apply_chat_template", None)
     if callable(chat_template):
-        formatted_prompt = chat_template(
-            [{"role": "user", "content": prompt}],
-            tokenize=True,
-            add_generation_prompt=True,
-        )
+        try:
+            formatted_prompt = chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=True,
+                add_generation_prompt=True,
+            )
+        except ValueError:
+            # Base checkpoints such as SmolLM2-135M may expose the method
+            # without shipping a chat template. They still support plain
+            # prompt encoding for GRPO.
+            if not hasattr(tokenizer, "encode"):
+                raise
+            prompt_ids = list(tokenizer.encode(prompt, add_special_tokens=False))
+        else:
         # Some HF-compatible tokenizer wrappers return formatted text despite
         # tokenize=True. Normalize both API variants before tensor creation.
-        if isinstance(formatted_prompt, str):
-            if not hasattr(tokenizer, "encode"):
-                raise TypeError("String chat templates require tokenizer.encode().")
-            prompt_ids = list(tokenizer.encode(formatted_prompt, add_special_tokens=False))
-        elif isinstance(formatted_prompt, Tensor):
-            prompt_ids = formatted_prompt.reshape(-1).tolist()
-        else:
-            prompt_ids = list(formatted_prompt)
+            if isinstance(formatted_prompt, str):
+                if not hasattr(tokenizer, "encode"):
+                    raise TypeError("String chat templates require tokenizer.encode().")
+                prompt_ids = list(tokenizer.encode(formatted_prompt, add_special_tokens=False))
+            elif isinstance(formatted_prompt, Tensor):
+                prompt_ids = formatted_prompt.reshape(-1).tolist()
+            elif isinstance(formatted_prompt, Mapping):
+                # Some fast tokenizers (including SmolLM2-Instruct) return a
+                # BatchEncoding rather than a raw token-id list. Iterating that
+                # object yields mapping keys (for example, "input_ids"), not IDs.
+                input_ids = formatted_prompt.get("input_ids")
+                if input_ids is None:
+                    raise TypeError("Chat-template BatchEncoding must contain 'input_ids'.")
+                if isinstance(input_ids, Tensor):
+                    prompt_ids = input_ids.reshape(-1).tolist()
+                elif (
+                    isinstance(input_ids, Sequence)
+                    and input_ids
+                    and isinstance(input_ids[0], Sequence)
+                    and not isinstance(input_ids[0], (str, bytes))
+                ):
+                    prompt_ids = list(input_ids[0])
+                else:
+                    prompt_ids = list(input_ids)
+            else:
+                prompt_ids = list(formatted_prompt)
     elif hasattr(tokenizer, "encode"):
         prompt_ids = list(tokenizer.encode(prompt, add_special_tokens=False))
     else:
         raise TypeError("tokenizer must provide encode() or apply_chat_template().")
-    if any(
-        isinstance(token_id, bool) or not isinstance(token_id, Integral)
-        for token_id in prompt_ids
-    ):
-        raise TypeError("Formatted GRPO prompts must tokenize to a sequence of integer token ids.")
-    prompt_ids = [int(token_id) for token_id in prompt_ids]
+    if prompt_ids and not getattr(_encode_prompt, "_token_type_logged", False):
+        # One diagnostic per process: enough to identify an unexpected fast
+        # tokenizer return type without printing once for every GRPO prompt.
+        print(f"[GRPO debug] prompt token type before normalization: {type(prompt_ids[0])!r}")
+        setattr(_encode_prompt, "_token_type_logged", True)
+
+    normalized_ids: list[int] = []
+    for token_id in prompt_ids:
+        try:
+            normalized_ids.append(int(token_id))
+        except (TypeError, ValueError, OverflowError) as error:
+            # Keep the diagnostic immediately adjacent to conversion so a
+            # tokenizer-specific scalar type is visible on a real run.
+            print(
+                "[GRPO debug] failed prompt-token conversion: "
+                f"type={type(token_id)!r} value={token_id!r}"
+            )
+            raise TypeError(
+                "Formatted GRPO prompts must contain values convertible to integer token ids."
+            ) from error
+    prompt_ids = normalized_ids
     if max_tokens is not None:
         if max_tokens <= 0:
             raise ValueError("Model context limit leaves no room for GRPO completion tokens.")
