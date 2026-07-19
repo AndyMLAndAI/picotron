@@ -10,7 +10,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron_dpo.data import PreferenceDataset, collate_preference_batch
 from picotron_dpo.dpo_trainer import DPOTrainer, _sequence_log_probability
 
@@ -25,7 +25,7 @@ class _PreferenceTokenizer:
 
 
 def test_dpo_increases_chosen_margin_and_keeps_reference_frozen() -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     loaded_config = load_config(config_path)
     config = replace(
         loaded_config,
@@ -41,7 +41,7 @@ def test_dpo_increases_chosen_margin_and_keeps_reference_frozen() -> None:
     )
 
     torch.manual_seed(41)
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     trainer = DPOTrainer(
         model,
         data_loader,
@@ -88,13 +88,13 @@ def test_dpo_increases_chosen_margin_and_keeps_reference_frozen() -> None:
     assert reference_unchanged
 
 
-def _margin(model: ToyDecoderModel, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+def _margin(model: PicotronDecoderModel, batch: dict[str, torch.Tensor]) -> torch.Tensor:
     chosen = _sequence_log_probability(model(batch["chosen_input_ids"]), batch["chosen_labels"])
     rejected = _sequence_log_probability(model(batch["rejected_input_ids"]), batch["rejected_labels"])
     return (chosen - rejected).mean()
 
 
-def _log_probabilities(model: ToyDecoderModel, batch: dict[str, torch.Tensor]) -> tuple[float, float]:
+def _log_probabilities(model: PicotronDecoderModel, batch: dict[str, torch.Tensor]) -> tuple[float, float]:
     chosen = _sequence_log_probability(model(batch["chosen_input_ids"]), batch["chosen_labels"])
     rejected = _sequence_log_probability(model(batch["rejected_input_ids"]), batch["rejected_labels"])
     return chosen.mean().item(), rejected.mean().item()

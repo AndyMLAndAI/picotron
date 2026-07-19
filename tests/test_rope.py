@@ -3,7 +3,7 @@
 import torch
 
 from config_factory import make_test_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.nn.rope import apply_rotary_embedding, rotary_cos_sin
 
 
@@ -28,7 +28,7 @@ def test_rope_enabled_model_forward_shape() -> None:
         position_embedding_type="rope",
         rope_theta=500_000.0,
     )
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     input_ids = torch.randint(
         0,
         config.model.model_config.vocab_size,

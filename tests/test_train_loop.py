@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.training.train_loop import train
 
 
@@ -27,7 +27,7 @@ class _RepeatableSyntheticDataset(Dataset[torch.Tensor]):
 
 
 def test_training_loss_decreases_on_cpu() -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     config = load_config(config_path)
     sequence = (
         torch.arange(config.tokens.sequence_length, dtype=torch.long)
@@ -39,7 +39,7 @@ def test_training_loss_decreases_on_cpu() -> None:
     data_loader = DataLoader(
         dataset, batch_size=config.tokens.micro_batch_size, shuffle=False
     )
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
 
     losses = train(model, data_loader, config, max_steps=80)
 

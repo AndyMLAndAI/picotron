@@ -9,7 +9,7 @@ from picotron_sft import run_sft
 from picotron_sft.sft_trainer import _extract_logits
 
 # Dataset records: see docs/dataset_format.md. Model-specific: Llama 3 8B uses RMSNorm, SwiGLU, RoPE, and GQA. Picotron's
-# toy model shares the RMSNorm/SwiGLU decoder style, but real Llama weights and
+# Picotron's native decoder shares the RMSNorm/SwiGLU style, but real Llama weights and
 # tokenizer/chat-template loading belong in an external HF model factory.
 MODEL_ID = "meta-llama/Meta-Llama-3-8B"
 MODEL_SPECIFIC_KWARGS = {

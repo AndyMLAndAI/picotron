@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 from safetensors.torch import load_file
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.serialize.checkpoint import load_checkpoint
 from picotron.training.train_loop import train
 
@@ -27,7 +27,7 @@ class _RepeatableTokens(Dataset[torch.Tensor]):
 
 
 def test_checkpoint_resume_preserves_weights_and_loss(tmp_path: Path) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     loaded_config = load_config(config_path)
     config = replace(
         loaded_config,
@@ -45,7 +45,7 @@ def test_checkpoint_resume_preserves_weights_and_loss(tmp_path: Path) -> None:
     checkpoint_path = tmp_path / "resume.pt"
 
     torch.manual_seed(11)
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     optimizer = AdamW(
         model.parameters(), lr=config.optimizer.learning_rate_scheduler.learning_rate
     )
@@ -59,7 +59,7 @@ def test_checkpoint_resume_preserves_weights_and_loss(tmp_path: Path) -> None:
     )
     saved_weights = {name: value.detach().clone() for name, value in model.state_dict().items()}
 
-    fresh_model = ToyDecoderModel(config)
+    fresh_model = PicotronDecoderModel(config)
     fresh_optimizer = AdamW(
         fresh_model.parameters(), lr=config.optimizer.learning_rate_scheduler.learning_rate
     )
@@ -88,9 +88,9 @@ def test_checkpoint_resume_preserves_weights_and_loss(tmp_path: Path) -> None:
 
 
 def test_checkpoint_weights_are_directly_loadable_safetensors(tmp_path: Path) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     config = load_config(config_path)
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     optimizer = AdamW(
         model.parameters(), lr=config.optimizer.learning_rate_scheduler.learning_rate
     )

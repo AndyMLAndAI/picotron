@@ -124,10 +124,24 @@ class ModelConfig:
             raise ConfigValidationError(
                 "'attention_type' must be one of 'mha', 'gqa', or 'mla'."
             )
-        if self.attention_type == "gqa" and self.num_key_value_heads is None:
+        if self.attention_type == "mha" and self.num_key_value_heads not in (
+            None,
+            self.num_attention_heads,
+        ):
             raise ConfigValidationError(
-                "'num_key_value_heads' is required when attention_type is 'gqa'."
+                "'attention_type: mha' requires num_key_value_heads to be unset "
+                "or equal to num_attention_heads."
             )
+        if self.attention_type == "gqa":
+            if self.num_key_value_heads is None:
+                raise ConfigValidationError(
+                    "'num_key_value_heads' is required when attention_type is 'gqa'."
+                )
+            if self.num_key_value_heads >= self.num_attention_heads:
+                raise ConfigValidationError(
+                    "'attention_type: gqa' requires num_key_value_heads to be "
+                    "smaller than num_attention_heads."
+                )
         if self.sliding_window_size is not None:
             _require_positive_int("sliding_window_size", self.sliding_window_size)
         _require_positive_number("rope_theta", self.rope_theta)

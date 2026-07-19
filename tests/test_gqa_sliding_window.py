@@ -3,7 +3,7 @@
 import torch
 
 from config_factory import make_test_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.nn.attention import CausalSelfAttention
 
 
@@ -41,9 +41,10 @@ def test_sliding_window_blocks_distant_past_tokens() -> None:
 def test_model_accepts_gqa_and_sliding_window_config() -> None:
     config = make_test_config(
         num_key_value_heads=2,
+        attention_type="gqa",
         sliding_window_size=4,
     )
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
 
     logits = model(torch.randint(0, config.model.model_config.vocab_size, (2, 8)))
 

@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from picotron.models.toy_model import RMSNorm
+from picotron.models.picotron_decoder import RMSNorm
 from picotron.nn.feedforward import SwiGLU
 from picotron.nn.rope import RotaryEmbedding
 from picotron.nn.triton_kernels import (

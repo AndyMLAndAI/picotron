@@ -1,4 +1,4 @@
-"""A small decoder-only transformer used to validate the project scaffold."""
+"""Picotron's configurable native decoder-only transformer."""
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ class DecoderBlock(nn.Module):
         return self.attention(hidden_states)
 
 
-class ToyDecoderModel(nn.Module):
+class PicotronDecoderModel(nn.Module):
     """Config-driven decoder-only transformer returning vocabulary logits.
 
     RoPE is the default position scheme; set

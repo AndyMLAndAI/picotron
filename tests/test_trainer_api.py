@@ -12,7 +12,7 @@ from torch.optim import AdamW
 from torch.utils.data import Dataset
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron_dpo import PicotronDPOConfig, PicotronDPOTrainer, run_dpo
 from picotron_sft import PicotronSFTConfig, PicotronSFTTrainer, run_sft
 
@@ -52,7 +52,7 @@ class _TokenizedDataset(Dataset[dict[str, torch.Tensor]]):
 
 
 def _toy_config():
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     loaded = load_config(config_path)
     return replace(loaded, tokens=replace(loaded.tokens, sequence_length=4, micro_batch_size=2))
 
@@ -61,7 +61,7 @@ def test_sft_trainer_delegates_to_run_sft_with_identical_losses() -> None:
     config = _toy_config()
     tokenizer = _Tokenizer()
     torch.manual_seed(13)
-    direct_model = ToyDecoderModel(config)
+    direct_model = PicotronDecoderModel(config)
     wrapper_model = copy.deepcopy(direct_model)
 
     direct_losses = run_sft(
@@ -93,7 +93,7 @@ def test_dpo_trainer_delegates_to_run_dpo_with_identical_losses() -> None:
     tokenizer = _Tokenizer()
     preferences = [("P", "A", "B")] * 12
     torch.manual_seed(17)
-    direct_model = ToyDecoderModel(config)
+    direct_model = PicotronDecoderModel(config)
     wrapper_model = copy.deepcopy(direct_model)
 
     direct_losses = run_dpo(

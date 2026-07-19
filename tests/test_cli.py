@@ -53,7 +53,7 @@ def test_pretraining_cli_delegates_to_train(monkeypatch) -> None:
     monkeypatch.setattr(
         cli, "initialize_distributed", lambda *args, **kwargs: distributed
     )
-    monkeypatch.setattr(cli, "ToyDecoderModel", fake_model)
+    monkeypatch.setattr(cli, "PicotronDecoderModel", fake_model)
     monkeypatch.setattr(cli, "create_synthetic_dataloader", lambda loaded_config, count: ("loader", count))
     monkeypatch.setattr(cli, "train", fake_train)
     monkeypatch.setattr(cli.torch.cuda, "is_available", lambda: False)

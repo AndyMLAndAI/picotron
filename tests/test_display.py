@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from picotron.config.config import load_config
 from picotron.logging.display import TrainingDisplay
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.training.train_loop import train
 
 try:
@@ -31,7 +31,7 @@ class _RepeatableTokens(Dataset[torch.Tensor]):
 
 
 def _config():
-    path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     return load_config(path)
 
 
@@ -70,7 +70,7 @@ def test_training_loss_trend_survives_display() -> None:
         shuffle=False,
     )
     torch.manual_seed(17)
-    losses = train(ToyDecoderModel(config), loader, config, max_steps=40)
+    losses = train(PicotronDecoderModel(config), loader, config, max_steps=40)
     first_average = sum(losses[:10]) / 10
     last_average = sum(losses[-10:]) / 10
     print(f"first_10_avg={first_average:.6f} last_10_avg={last_average:.6f}")

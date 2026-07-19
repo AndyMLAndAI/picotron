@@ -2,7 +2,7 @@
 
 ## Conclusion
 
-`ToyDecoderModel` is Picotron's only native, from-scratch causal-LM
+`PicotronDecoderModel` is Picotron's only native, from-scratch causal-LM
 architecture.  `picotron.models` exports only that class, and the CLI creates
 only that class.  The other `nn` classes are decoder components, not alternate
 models.  `picotron_sft` and `picotron_dpo` can instead accept externally
@@ -13,9 +13,9 @@ path rather than a second Picotron architecture.
 
 | Feature | Configuration | Native-model path | Audit result |
 | --- | --- | --- | --- |
-| RMSNorm and dense SwiGLU | built-in defaults | `DecoderBlock` and `ToyDecoderModel` | Wired. |
+| RMSNorm and dense SwiGLU | built-in defaults | `DecoderBlock` and `PicotronDecoderModel` | Wired. |
 | RoPE | `position_embedding_type: rope`, `rope_theta` | Each non-NoPE `DecoderBlock` creates attention with `use_rope=True` | Wired; default position scheme. |
-| Learned positions | `position_embedding_type: learned` | `ToyDecoderModel.position_embeddings` | Wired as the alternative to RoPE. |
+| Learned positions | `position_embedding_type: learned` | `PicotronDecoderModel.position_embeddings` | Wired as the alternative to RoPE. |
 | Per-layer NoPE | `nope_layers` | The selected layers are built with `use_rope=False` | Wired.  With learned positions selected, all attention layers already omit RoPE, so `nope_layers` has no additional effect. |
 | GQA | `num_key_value_heads` (and validated `attention_type: gqa`) | `CausalSelfAttention` creates smaller K/V projections, then expands K/V heads for scores | Wired. |
 | Sliding-window attention | `sliding_window_size` | `CausalSelfAttention._causal_mask` combines window and causal masks | Wired for the eager MHA/GQA path.  Schema validation intentionally excludes combining it with MLA. |
@@ -28,7 +28,7 @@ short training-loss decrease.  This audit itself changes documentation only.
 
 ## Important limitations found
 
-1. `ToyDecoderModel.forward` accepts only complete `input_ids`; it has no
+1. `PicotronDecoderModel.forward` accepts only complete `input_ids`; it has no
    `past_key_values`/`use_cache` generation API.  `MultiHeadLatentAttention`
    records a detached `last_kv_cache` for inspection, but that cache is not
    accepted by a later forward call.  Therefore the MLA module's compressed
@@ -43,7 +43,6 @@ short training-loss decrease.  This audit itself changes documentation only.
 
 ## Naming recommendation
 
-The class is more capable than the name `ToyDecoderModel` suggests.  A future
-compatible rename to `PicotronDecoderModel` (or `PicotronCausalLM`) would
-better communicate that it is the project's configurable native decoder.
-This audit deliberately does not rename it.
+The model is named `PicotronDecoderModel`, which communicates that it is the
+project's configurable native decoder.  `PicotronCausalLM` remains a possible
+future name if the public API grows an explicit generation interface.

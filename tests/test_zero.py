@@ -10,7 +10,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.parallel.ddp import cleanup_distributed, initialize_distributed
 from picotron.training.train_loop import train
 
@@ -46,7 +46,7 @@ def _run_rank(
         ),
     )
     torch.manual_seed(41)
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     batch = (
         torch.arange(
             config.tokens.micro_batch_size * config.tokens.sequence_length,
@@ -64,7 +64,7 @@ def _run_rank(
 
 
 def _run_stage(zero_stage: int, tmp_path: Path) -> dict[str, torch.Tensor]:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     context = mp.get_context("spawn")
     port = _free_port()
     processes = [

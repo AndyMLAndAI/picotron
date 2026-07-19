@@ -12,7 +12,7 @@ from torch.nn import functional as F
 from torch.optim import AdamW
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.parallel.ddp import cleanup_distributed, initialize_distributed, wrap_model
 
 
@@ -44,7 +44,7 @@ def _ddp_worker(
         parallelism=replace(loaded_config.parallelism, dp=world_size),
     )
     torch.manual_seed(23)
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     info = initialize_distributed(backend="gloo")
     model = wrap_model(model, info, device="cpu")
     optimizer = AdamW(
@@ -83,7 +83,7 @@ def test_single_process_fallback() -> None:
 
 
 def test_two_rank_cpu_gradients_synchronize(tmp_path: Path) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     port = _free_port()
     context = mp.get_context("spawn")
     processes = [

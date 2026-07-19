@@ -3,13 +3,13 @@
 import torch
 
 from config_factory import make_test_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.training.train_loop import train
 
 
 def test_core_only_config_runs_forward_and_one_training_step() -> None:
     config = make_test_config()
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     batch = torch.randint(
         0,
         config.model.model_config.vocab_size,
@@ -31,7 +31,7 @@ def test_core_only_config_runs_forward_and_one_training_step() -> None:
 
 def test_tie_word_embeddings_uses_one_shared_vocabulary_parameter() -> None:
     config = make_test_config(tie_word_embeddings=True)
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     input_ids = torch.randint(
         0,
         config.model.model_config.vocab_size,

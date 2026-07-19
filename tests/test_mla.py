@@ -4,7 +4,7 @@ import torch
 
 from config_factory import make_test_config
 from picotron.config.config import PicotronConfig
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.nn.mla import MultiHeadLatentAttention
 from picotron.training.train_loop import train
 
@@ -19,7 +19,7 @@ def _config() -> PicotronConfig:
 
 def test_mla_model_forward_shape_and_latent_cache_compression() -> None:
     config = _config()
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     input_ids = torch.randint(
         0,
         config.model.model_config.vocab_size,
@@ -46,7 +46,7 @@ def test_mla_model_forward_shape_and_latent_cache_compression() -> None:
 
 def test_mla_training_loss_decreases() -> None:
     config = _config()
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     tokens = torch.arange(config.tokens.sequence_length).unsqueeze(0).repeat(
         config.tokens.micro_batch_size, 1
     )

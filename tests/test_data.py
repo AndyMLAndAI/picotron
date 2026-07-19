@@ -15,7 +15,7 @@ from picotron.data.dataloader import (
 
 
 def test_synthetic_dataloader_batch_shapes_and_dtype() -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     config = load_config(config_path)
     loader = create_synthetic_dataloader(
         config, num_sequences=config.tokens.micro_batch_size * 3, seed=7
@@ -34,7 +34,7 @@ def test_synthetic_dataloader_batch_shapes_and_dtype() -> None:
 
 
 def test_memmap_dataloader_reads_configured_token_cache(tmp_path: Path) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     loaded_config = load_config(config_path)
     token_path = tmp_path / "tokens.uint16"
     token_count = loaded_config.tokens.sequence_length * loaded_config.tokens.micro_batch_size
@@ -54,7 +54,7 @@ def test_memmap_dataloader_reads_configured_token_cache(tmp_path: Path) -> None:
 
 
 def test_memmap_dataloader_decompresses_gzip_token_cache(tmp_path: Path) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     loaded_config = load_config(config_path)
     token_count = loaded_config.tokens.sequence_length * loaded_config.tokens.micro_batch_size
     token_path = tmp_path / "tokens.uint16.gz"

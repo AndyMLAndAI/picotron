@@ -14,7 +14,7 @@ from picotron.data.dataloader import (
     create_memmap_dataloader,
     create_synthetic_dataloader,
 )
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.parallel.ddp import initialize_distributed
 from picotron.training.train_loop import train
 
@@ -54,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     distributed_info = initialize_distributed(
         expected_world_size=config.parallelism.dp
     )
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     if config.data.dataset_token_path is not None:
         data_loader = create_memmap_dataloader(
             config,

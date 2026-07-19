@@ -4,7 +4,7 @@ import torch
 
 from config_factory import make_test_config
 from picotron.config.config import MoEConfig, PicotronConfig
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.nn.feedforward import SwiGLU
 from picotron.nn.moe import MoEFeedForward
 from picotron.training.train_loop import train
@@ -33,7 +33,7 @@ def test_moe_shape_routing_and_auxiliary_gradients() -> None:
 
 
 def test_dense_ffn_path_remains_default() -> None:
-    model = ToyDecoderModel(_config(None))
+    model = PicotronDecoderModel(_config(None))
 
     logits = model(torch.randint(0, 32, (2, 8)))
 
@@ -44,7 +44,7 @@ def test_dense_ffn_path_remains_default() -> None:
 
 def test_moe_model_training_loss_decreases() -> None:
     config = _config(MoEConfig(num_experts=2, top_k=2, aux_loss_coefficient=0.01))
-    model = ToyDecoderModel(config)
+    model = PicotronDecoderModel(config)
     tokens = torch.arange(config.tokens.sequence_length).unsqueeze(0).repeat(
         config.tokens.micro_batch_size, 1
     )

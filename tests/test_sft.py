@@ -8,7 +8,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 
 from picotron.config.config import load_config
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.serialize.checkpoint import save_checkpoint
 from picotron.training.train_loop import train
 from picotron_sft import run_sft
@@ -39,7 +39,7 @@ class _SFTDataset(Dataset[dict[str, torch.Tensor]]):
 
 
 def test_sft_loads_picotron_checkpoint_and_learns_new_data(tmp_path: Path) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/toy_model.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
     loaded_config = load_config(config_path)
     base_config = replace(
         loaded_config,
@@ -53,7 +53,7 @@ def test_sft_loads_picotron_checkpoint_and_learns_new_data(tmp_path: Path) -> No
         shuffle=False,
     )
     torch.manual_seed(29)
-    pretrained_model = ToyDecoderModel(base_config)
+    pretrained_model = PicotronDecoderModel(base_config)
     pretrained_optimizer = AdamW(
         pretrained_model.parameters(),
         lr=base_config.optimizer.learning_rate_scheduler.learning_rate,
@@ -75,7 +75,7 @@ def test_sft_loads_picotron_checkpoint_and_learns_new_data(tmp_path: Path) -> No
         batch_size=base_config.tokens.micro_batch_size,
         shuffle=False,
     )
-    resumed_model = ToyDecoderModel(base_config)
+    resumed_model = PicotronDecoderModel(base_config)
     losses = run_sft(
         resumed_model,
         sft_loader,

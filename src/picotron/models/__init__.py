@@ -1,6 +1,5 @@
 """Model definitions."""
 
-from picotron.models.toy_model import ToyDecoderModel
+from picotron.models.picotron_decoder import PicotronDecoderModel
 
-__all__ = ["ToyDecoderModel"]
-
+__all__ = ["PicotronDecoderModel"]

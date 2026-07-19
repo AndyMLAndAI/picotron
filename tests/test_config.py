@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from picotron.config.config import ConfigValidationError, PicotronConfig, load_config
+from picotron.config.config import ConfigValidationError, ModelConfig, PicotronConfig, load_config
 
 
 REQUIRED_CONFIG = """\
@@ -222,6 +222,53 @@ def test_attention_type_and_nope_layers_yaml_regression(tmp_path: Path) -> None:
 
     assert config.model.model_config.attention_type == "mha"
     assert config.model.model_config.nope_layers == (0,)
+
+
+def test_mha_rejects_grouped_key_value_heads() -> None:
+    with pytest.raises(
+        ConfigValidationError,
+        match="attention_type: mha.*num_key_value_heads.*num_attention_heads",
+    ):
+        ModelConfig(
+            vocab_size=64,
+            hidden_size=32,
+            intermediate_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            attention_type="mha",
+        )
+
+
+def test_gqa_requires_strictly_fewer_key_value_heads() -> None:
+    with pytest.raises(
+        ConfigValidationError,
+        match="attention_type: gqa.*smaller than num_attention_heads",
+    ):
+        ModelConfig(
+            vocab_size=64,
+            hidden_size=32,
+            intermediate_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=4,
+            attention_type="gqa",
+        )
+
+
+def test_gqa_requires_key_value_heads_to_be_specified() -> None:
+    with pytest.raises(
+        ConfigValidationError,
+        match="num_key_value_heads.*required when attention_type is 'gqa'",
+    ):
+        ModelConfig(
+            vocab_size=64,
+            hidden_size=32,
+            intermediate_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            attention_type="gqa",
+        )
 
 
 def test_data_vocab_size_must_match_model_vocab_size(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from picotron.models.toy_model import RMSNorm
+from picotron.models.picotron_decoder import RMSNorm
 from picotron.nn.triton_kernels import triton_rms_norm
 from picotron.utils.hardware import detect_triton_support
 
