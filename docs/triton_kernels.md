@@ -39,7 +39,15 @@ the eager path on the target GPU before relying on it.
 
 ## torch.compile
 
-`torch.compile` is not currently wired into Picotron and has no config flag.
-It should be introduced only with a dedicated GPU correctness/performance
-validation pass, including DDP and the optional native-model feature
-combinations.
+`torch.compile` is separately opt-in, not a Triton-kernel flag:
+
+```yaml
+model:
+  compile_model: true
+```
+
+Picotron compiles the native model before DDP wraps it. If the compile call
+fails, it emits a warning and continues with the eager model. Checkpointing
+unwraps both DDP and the compiled wrapper, so `.safetensors` weights remain
+portable to an eager model. Actual T4 speed and compatibility still require
+a target-GPU test.

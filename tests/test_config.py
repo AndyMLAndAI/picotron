@@ -93,6 +93,7 @@ checkpoints:
   save_final_state: true
 model:
   dtype: float32
+  compile_model: true
   triton_kernels:
     rmsnorm: true
     swiglu: true
@@ -173,6 +174,7 @@ general:
     assert not config.checkpoints.load_lr_scheduler
     assert config.checkpoints.save_final_state
     assert config.model.dtype == "float32"
+    assert config.model.compile_model
     assert all(
         (
             config.model.triton_kernels.rmsnorm,

@@ -44,6 +44,7 @@ def make_test_config(
     tie_word_embeddings: bool = False,
     position_embedding_type: str = "rope",
     gradient_checkpointing: bool = False,
+    compile_model: bool = False,
     model_kwargs: Mapping[str, Any] | None = None,
     triton_kernels: TritonKernelsConfig | None = None,
     data: DataConfig | None = None,
@@ -72,6 +73,7 @@ def make_test_config(
                 gradient_checkpointing=gradient_checkpointing,
                 model_kwargs=dict(model_kwargs or {}),
             ),
+            compile_model=compile_model,
             triton_kernels=triton_kernels or TritonKernelsConfig(),
         ),
         optimizer=OptimizerConfig(

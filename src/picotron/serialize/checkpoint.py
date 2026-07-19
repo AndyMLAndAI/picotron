@@ -90,9 +90,11 @@ def load_checkpoint(
 
 
 def _unwrap_ddp_model(model: nn.Module) -> nn.Module:
-    """Use the underlying model so checkpoints are portable across DDP runs."""
+    """Unwrap DDP and ``torch.compile`` wrappers for portable checkpoints."""
 
-    return model.module if isinstance(model, DistributedDataParallel) else model
+    checkpoint_model = model.module if isinstance(model, DistributedDataParallel) else model
+    original_model = getattr(checkpoint_model, "_orig_mod", None)
+    return original_model if isinstance(original_model, nn.Module) else checkpoint_model
 
 
 def _checkpoint_paths(path: str | Path) -> tuple[Path, Path]:

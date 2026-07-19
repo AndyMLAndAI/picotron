@@ -60,6 +60,9 @@ def train(
     # Keep parameters/master optimizer state in fp32. CUDA autocast below
     # applies the configured compute dtype without unsafe fp16 AdamW state.
     model.to(device=target_device)
+    # Compile before DDP: DDP must register hooks on the module that actually
+    # runs forward/backward, while checkpointing unwraps the compiled module.
+    model = _maybe_compile_model(model, config)
 
     distributed_info = initialize_distributed(
         expected_world_size=config.parallelism.dp
@@ -217,6 +220,50 @@ def _configure_runtime(config: PicotronConfig) -> None:
 
     torch.manual_seed(config.general.seed)
     logging.getLogger("picotron").setLevel(config.logging.log_level)
+
+
+def _maybe_compile_model(model: nn.Module, config: PicotronConfig) -> nn.Module:
+    """Compile the model only when explicitly requested, with eager fallback."""
+
+    if not config.model.compile_model:
+        return model
+    try:
+        return _CompileFallbackModule(model, torch.compile(model))
+    except Exception as error:  # pragma: no cover - backend-specific failures.
+        logging.getLogger("picotron").warning(
+            "torch.compile failed; using eager model instead: %s", error
+        )
+        return model
+
+
+class _CompileFallbackModule(nn.Module):
+    """Run a compiled model until its lazy compilation fails, then use eager.
+
+    ``torch.compile`` commonly defers backend work to its first forward. This
+    wrapper catches those deferred failures, logs them once, and permanently
+    selects the original module. The original module is deliberately exposed
+    as ``_orig_mod`` so checkpoint serialization can unwrap it just like
+    PyTorch's own compiled module.
+    """
+
+    def __init__(self, eager_model: nn.Module, compiled_model: nn.Module) -> None:
+        super().__init__()
+        self._orig_mod = eager_model
+        # Keep the compiled wrapper out of Module registration: it already
+        # references _orig_mod, and double registration would duplicate keys.
+        object.__setattr__(self, "_compiled_model", compiled_model)
+        self._compiled_active = True
+
+    def forward(self, *args: object, **kwargs: object) -> object:
+        if self._compiled_active:
+            try:
+                return self._compiled_model(*args, **kwargs)
+            except Exception as error:  # pragma: no cover - backend-specific failures.
+                logging.getLogger("picotron").warning(
+                    "torch.compile execution failed; using eager model instead: %s", error
+                )
+                self._compiled_active = False
+        return self._orig_mod(*args, **kwargs)
 
 
 def _autocast_context(

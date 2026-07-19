@@ -234,6 +234,7 @@ class ModelSettings:
 
     model_config: ModelConfig
     dtype: str = "auto"
+    compile_model: bool = False
     triton_kernels: TritonKernelsConfig = field(default_factory=TritonKernelsConfig)
 
     def __post_init__(self) -> None:
@@ -259,6 +260,7 @@ class ModelSettings:
             raise ConfigValidationError(
                 "'dtype' must be one of 'auto', 'float32', 'float16', or 'bfloat16'."
             )
+        _require_bool("compile_model", self.compile_model)
 
     def resolve_dtype(self, device: int | torch.device | None = None) -> torch.dtype:
         """Resolve the configured dtype while enforcing the Turing bf16 rule."""
