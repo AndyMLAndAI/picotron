@@ -58,6 +58,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         learning_rate=(
             config.base_config.optimizer.learning_rate_scheduler.learning_rate
         ),
+        weight_decay=config.base_config.optimizer.weight_decay,
         batch_size=config.base_config.tokens.micro_batch_size,
         num_steps=(
             args.max_steps or config.max_steps or config.base_config.tokens.train_steps

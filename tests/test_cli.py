@@ -36,7 +36,7 @@ def test_pretraining_cli_delegates_to_train(monkeypatch) -> None:
         general=SimpleNamespace(seed=17),
         parallelism=SimpleNamespace(dp=1),
     )
-    distributed = SimpleNamespace(local_rank=0)
+    distributed = SimpleNamespace(local_rank=0, rank=0, world_size=1)
 
     def fake_load_config(path):
         calls["config"] = path
@@ -54,7 +54,11 @@ def test_pretraining_cli_delegates_to_train(monkeypatch) -> None:
         cli, "initialize_distributed", lambda *args, **kwargs: distributed
     )
     monkeypatch.setattr(cli, "PicotronDecoderModel", fake_model)
-    monkeypatch.setattr(cli, "create_synthetic_dataloader", lambda loaded_config, count: ("loader", count))
+    monkeypatch.setattr(
+        cli,
+        "create_synthetic_dataloader",
+        lambda loaded_config, count, **_: ("loader", count),
+    )
     monkeypatch.setattr(cli, "train", fake_train)
     monkeypatch.setattr(cli.torch.cuda, "is_available", lambda: False)
 
@@ -85,7 +89,8 @@ def test_sft_cli_parses_and_delegates(monkeypatch) -> None:
     calls = {}
     base_config = SimpleNamespace(
         optimizer=SimpleNamespace(
-            learning_rate_scheduler=SimpleNamespace(learning_rate=0.001)
+            learning_rate_scheduler=SimpleNamespace(learning_rate=0.001),
+            weight_decay=0.0,
         ),
         tokens=SimpleNamespace(micro_batch_size=2),
     )

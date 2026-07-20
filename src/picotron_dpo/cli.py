@@ -50,6 +50,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         base_checkpoint_path=config.base_checkpoint_path,
         beta=config.beta,
         learning_rate=config.base_config.optimizer.learning_rate_scheduler.learning_rate,
+        weight_decay=config.base_config.optimizer.weight_decay,
         batch_size=config.base_config.tokens.micro_batch_size,
         max_length=config.base_config.tokens.sequence_length,
         num_steps=args.max_steps or config.max_steps or config.base_config.tokens.train_steps,

@@ -37,6 +37,7 @@ class DPOTrainer:
         ref_model: nn.Module | None = None,
         beta: float = 0.1,
         learning_rate: float = 1e-5,
+        weight_decay: float = 0.0,
         num_steps: int | None = None,
         optimizer: Optimizer | None = None,
         device: torch.device | str = torch.device("cpu"),
@@ -48,6 +49,8 @@ class DPOTrainer:
             raise ValueError("beta must be positive.")
         if learning_rate <= 0:
             raise ValueError("learning_rate must be positive.")
+        if weight_decay < 0:
+            raise ValueError("weight_decay must be non-negative.")
         if num_steps is not None and num_steps <= 0:
             raise ValueError("num_steps must be positive when provided.")
         if ref_model is model:
@@ -61,7 +64,9 @@ class DPOTrainer:
         self.display_config = display_config
         self.model_kwargs = dict(model_kwargs or {})
         self.model.to(self.device)
-        self.optimizer = optimizer or AdamW(self.model.parameters(), lr=learning_rate)
+        self.optimizer = optimizer or AdamW(
+            self.model.parameters(), lr=learning_rate, weight_decay=weight_decay
+        )
         if base_checkpoint_path is not None:
             load_checkpoint(self.model, self.optimizer, base_checkpoint_path)
 
@@ -171,6 +176,7 @@ def run_dpo(
     ref_model: nn.Module | None = None,
     beta: float = 0.1,
     learning_rate: float = 1e-5,
+    weight_decay: float = 0.0,
     batch_size: int = 1,
     max_length: int = 1024,
     num_steps: int | None = None,
@@ -180,7 +186,7 @@ def run_dpo(
     base_checkpoint_path: str | Path | None = None,
     **model_kwargs: Any,
 ) -> list[float]:
-    """Run DPO directly from text triples or already-tokenized preference batches."""
+    """Run DPO directly with a zero-default-weight-decay AdamW optimizer."""
 
     if batch_size <= 0:
         raise ValueError("batch_size must be positive.")
@@ -191,6 +197,7 @@ def run_dpo(
         ref_model=ref_model,
         beta=beta,
         learning_rate=learning_rate,
+        weight_decay=weight_decay,
         num_steps=num_steps,
         optimizer=optimizer,
         device=device,

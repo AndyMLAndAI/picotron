@@ -32,6 +32,7 @@ class SFTTrainer:
         *,
         base_checkpoint_path: str | None = None,
         learning_rate: float = 1e-5,
+        weight_decay: float = 0.0,
         num_steps: int | None = None,
         display_config: Any | None = None,
         model_kwargs: Mapping[str, Any] | None = None,
@@ -40,6 +41,8 @@ class SFTTrainer:
     ) -> None:
         if learning_rate <= 0:
             raise ValueError("learning_rate must be positive.")
+        if weight_decay < 0:
+            raise ValueError("weight_decay must be non-negative.")
         if num_steps is not None and num_steps <= 0:
             raise ValueError("num_steps must be positive when provided.")
         self.model = model
@@ -50,7 +53,9 @@ class SFTTrainer:
         self.model_kwargs = dict(model_kwargs or {})
         self.device = torch.device(device)
         self.model.to(self.device)
-        self.optimizer = optimizer or AdamW(self.model.parameters(), lr=learning_rate)
+        self.optimizer = optimizer or AdamW(
+            self.model.parameters(), lr=learning_rate, weight_decay=weight_decay
+        )
         self.resumed_step = 0
         self._checkpoint_loaded = False
 
@@ -116,6 +121,7 @@ def run_sft(
     *,
     base_checkpoint_path: str | None = None,
     learning_rate: float = 1e-5,
+    weight_decay: float = 0.0,
     batch_size: int = 1,
     num_steps: int | None = None,
     device: torch.device | str = torch.device("cpu"),
@@ -127,6 +133,7 @@ def run_sft(
 
     ``dataset`` may be a PyTorch Dataset (batched with ``batch_size``) or an
     iterable that already yields ``(input_ids, labels)`` or mapping batches.
+    ``weight_decay`` defaults to zero, matching :class:`PicotronSFTConfig`.
     Extra keyword arguments are forwarded to the model on every SFT step.
     """
 
@@ -138,6 +145,7 @@ def run_sft(
         data_loader,
         base_checkpoint_path=base_checkpoint_path,
         learning_rate=learning_rate,
+        weight_decay=weight_decay,
         num_steps=num_steps,
         display_config=display_config,
         model_kwargs=model_kwargs,

@@ -14,7 +14,9 @@ from torch.utils.data import Dataset
 from picotron.config.config import load_config
 from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron_dpo import PicotronDPOConfig, PicotronDPOTrainer, run_dpo
+from picotron_dpo.dpo_trainer import DPOTrainer
 from picotron_sft import PicotronSFTConfig, PicotronSFTTrainer, run_sft
+from picotron_sft.sft_trainer import SFTTrainer
 
 
 class _Tokenizer:
@@ -67,7 +69,7 @@ def test_sft_trainer_delegates_to_run_sft_with_identical_losses() -> None:
     direct_losses = run_sft(
         direct_model,
         _TokenizedDataset(),
-        optimizer=AdamW(direct_model.parameters(), lr=0.01),
+        optimizer=AdamW(direct_model.parameters(), lr=0.01, weight_decay=0.0),
         learning_rate=0.01,
         batch_size=2,
         num_steps=4,
@@ -100,7 +102,7 @@ def test_dpo_trainer_delegates_to_run_dpo_with_identical_losses() -> None:
         direct_model,
         preferences,
         tokenizer=tokenizer,
-        optimizer=AdamW(direct_model.parameters(), lr=0.01),
+        optimizer=AdamW(direct_model.parameters(), lr=0.01, weight_decay=0.0),
         learning_rate=0.01,
         batch_size=1,
         max_length=4,
@@ -120,3 +122,14 @@ def test_dpo_trainer_delegates_to_run_dpo_with_identical_losses() -> None:
     ).train()
 
     assert wrapped_losses == pytest.approx(direct_losses, abs=1e-7)
+
+
+def test_functional_trainers_share_zero_weight_decay_default() -> None:
+    """Prevent PyTorch AdamW's 0.01 default from bypassing the public API policy."""
+
+    config = _toy_config()
+    sft_trainer = SFTTrainer(PicotronDecoderModel(config), [])
+    dpo_trainer = DPOTrainer(PicotronDecoderModel(config), [])
+
+    assert sft_trainer.optimizer.param_groups[0]["weight_decay"] == 0.0
+    assert dpo_trainer.optimizer.param_groups[0]["weight_decay"] == 0.0

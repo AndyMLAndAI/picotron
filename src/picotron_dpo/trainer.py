@@ -89,6 +89,7 @@ class PicotronDPOTrainer:
             ref_model=self.ref_model,
             beta=self.args.beta,
             learning_rate=self.args.learning_rate,
+            weight_decay=self.args.weight_decay,
             batch_size=self.args.per_device_train_batch_size,
             max_length=self.args.max_length,
             num_steps=self.args.max_steps,
