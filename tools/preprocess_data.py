@@ -13,6 +13,7 @@ import shutil
 from typing import Any, Iterable, Iterator, Sequence
 
 import numpy as np
+from tqdm.auto import tqdm
 
 
 _WORKER_TOKENIZER: Any | None = None
@@ -33,7 +34,9 @@ def preprocess_dataset(
 ) -> bool:
     """Create a deterministic uint16 token cache from a streamed dataset.
 
-    Tokenization is batched across an ordered process pool.  Raw dataset text is
+    This tool deliberately preprocesses one source per invocation; configure
+    multiple resulting caches under ``data.datasets`` to mix them at training
+    time. Tokenization is batched across an ordered process pool. Raw dataset text is
     cached as JSONL, allowing a repeat preprocessing run to avoid re-fetching
     already-consumed examples.  ``compression='gzip'`` writes a gzip-compressed
     token cache; uncompressed uint16 remains the default.
@@ -82,6 +85,13 @@ def preprocess_dataset(
         text_field=text_field,
     )
 
+    progress_bar = tqdm(
+        total=target_tokens,
+        initial=written,
+        desc=f"tokenizing {dataset_name}",
+        unit="token",
+        unit_scale=True,
+    )
     try:
         for token_ids in _tokenize_in_order(texts, tokenizer, worker_count):
             if resume_tokens:
@@ -98,10 +108,12 @@ def preprocess_dataset(
                 token_ids[:count], dtype=np.uint16
             )
             written += count
+            progress_bar.update(count)
             _save_progress(progress_path, written, target_tokens)
             if written >= target_tokens:
                 break
     finally:
+        progress_bar.close()
         token_memmap.flush()
         del token_memmap
 

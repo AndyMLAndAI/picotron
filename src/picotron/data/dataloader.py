@@ -6,7 +6,12 @@ import torch
 from torch.utils.data import DataLoader, DistributedSampler
 
 from picotron.config.config import PicotronConfig
-from picotron.data.dataset import MemmapTokenDataset, SyntheticTokenDataset
+from picotron.data.dataset import (
+    MemmapTokenDataset,
+    SyntheticTokenDataset,
+    WeightedInterleavedBatchDataset,
+)
+from tqdm.auto import tqdm
 
 
 def create_synthetic_dataloader(
@@ -50,10 +55,29 @@ def create_memmap_dataloader(
 ) -> DataLoader[torch.Tensor]:
     """Build a token-cache loader, sharding examples across DDP ranks."""
 
-    token_path = config.data.dataset_token_path
-    if token_path is None:
-        raise ValueError("config.data.dataset_token_path is required for memmap loading.")
-    dataset = MemmapTokenDataset(config, token_path)
+    sources = config.data.dataset_sources
+    if not sources:
+        raise ValueError("A token cache is required for memmap loading.")
+    # Memmaps do not read the corpus eagerly, but opening several large caches
+    # can still be visible on networked storage. Keep this startup observable.
+    datasets = tuple(
+        MemmapTokenDataset(config, source.path)
+        for source in tqdm(sources, desc="opening token caches", unit="dataset")
+    )
+    if len(datasets) > 1:
+        return _create_interleaved_loader(
+            config,
+            WeightedInterleavedBatchDataset(
+                datasets,
+                tuple(source.weight for source in sources),
+                batch_size=config.tokens.micro_batch_size,
+                seed=config.general.seed,
+                rank=rank,
+                world_size=world_size,
+            ),
+            num_workers=num_workers,
+        )
+    dataset = datasets[0]
     sampler = _distributed_sampler(
         dataset,
         rank=rank,
@@ -68,6 +92,28 @@ def create_memmap_dataloader(
         shuffle=sampler is None,
         num_workers=num_workers,
     )
+
+
+def _create_interleaved_loader(
+    config: PicotronConfig,
+    dataset: WeightedInterleavedBatchDataset,
+    *,
+    num_workers: int | None,
+) -> DataLoader[torch.Tensor]:
+    """Create a loader for pre-batched, indefinitely interleaved samples."""
+
+    active_workers = config.data.num_workers if num_workers is None else num_workers
+    if active_workers < 0:
+        raise ValueError("num_workers must be non-negative.")
+    loader_kwargs: dict[str, object] = {
+        "batch_size": None,
+        "num_workers": active_workers,
+        "pin_memory": True,
+        "persistent_workers": active_workers > 0,
+    }
+    if active_workers > 0:
+        loader_kwargs["prefetch_factor"] = config.data.prefetch_factor
+    return DataLoader(dataset, **loader_kwargs)
 
 
 def _distributed_sampler(

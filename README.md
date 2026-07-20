@@ -17,6 +17,27 @@ RMSNorm now has a fused Triton forward with a correct PyTorch backward;
 the remaining Triton paths remain guarded inference-only experiments and
 fall back during autograd.
 
+## Mixing preprocessed datasets
+
+Preprocess each source separately with `tools/preprocess_data.py`; the tool
+shows a `tqdm` tokenization bar and produces one reusable uint16 cache per
+invocation. Mix those caches at training time rather than concatenating them:
+
+```yaml
+data:
+  datasets:
+    - path: /data/fineweb.uint16
+      weight: 0.7
+    - path: /data/code.uint16
+      weight: 0.3
+```
+
+Each pretraining batch is sampled from one source according to these relative
+weights. The legacy `data.dataset_token_path` remains supported as a single
+source with weight `1.0`; do not set both forms in the same config. Opening
+the configured token caches shows a `tqdm` startup bar, while the existing
+training display reports optimizer-step progress.
+
 ## CPU checks
 
 From this directory, run:

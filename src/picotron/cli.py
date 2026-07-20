@@ -55,7 +55,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         expected_world_size=config.parallelism.dp
     )
     model = PicotronDecoderModel(config)
-    if config.data.dataset_token_path is not None:
+    data_config = getattr(config, "data", None)
+    if data_config is not None and data_config.dataset_sources:
         data_loader = create_memmap_dataloader(
             config,
             rank=distributed_info.rank,

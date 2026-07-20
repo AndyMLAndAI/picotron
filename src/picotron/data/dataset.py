@@ -12,7 +12,7 @@ import uuid
 import numpy as np
 import torch
 from torch import Tensor
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset, get_worker_info
 
 from picotron.config.config import PicotronConfig
 
@@ -79,6 +79,68 @@ class MemmapTokenDataset(Dataset[Tensor]):
             self._tokens[start : start + self.sequence_length], dtype=np.int64
         )
         return torch.from_numpy(values.copy())
+
+    def get_batch(self, indices: Tensor) -> Tensor:
+        """Fetch a same-source batch without Python-level sequence collation."""
+
+        if indices.ndim != 1 or indices.dtype not in (torch.int32, torch.int64):
+            raise ValueError("indices must be a one-dimensional integer tensor.")
+        if torch.any(indices < 0) or torch.any(indices >= self._num_sequences):
+            raise IndexError("Memmap token index out of range.")
+        positions = indices.cpu().numpy().astype(np.int64, copy=False)
+        offsets = positions[:, None] * self.sequence_length + np.arange(self.sequence_length)
+        values = np.asarray(self._tokens[offsets], dtype=np.int64)
+        return torch.from_numpy(values.copy())
+
+
+class WeightedInterleavedBatchDataset(IterableDataset[Tensor]):
+    """Yield full batches sampled from token caches by configurable weights.
+
+    A batch is drawn from one source, so a 0.7/0.3 configuration produces an
+    actual 70/30 *batch* mix rather than a concatenated corpus. Each DDP rank
+    samples only its modulo partition of every source cache.
+    """
+
+    def __init__(
+        self,
+        datasets: tuple[MemmapTokenDataset, ...],
+        weights: tuple[float, ...],
+        *,
+        batch_size: int,
+        seed: int,
+        rank: int,
+        world_size: int,
+    ) -> None:
+        if len(datasets) < 2 or len(datasets) != len(weights):
+            raise ValueError("Weighted interleaving requires at least two datasets and matching weights.")
+        if batch_size <= 0 or world_size <= 0 or not 0 <= rank < world_size:
+            raise ValueError("Invalid batch_size, rank, or world_size for weighted interleaving.")
+        if any(weight <= 0 for weight in weights):
+            raise ValueError("All dataset weights must be positive.")
+        if any(len(dataset) <= rank for dataset in datasets):
+            raise ValueError("Every dataset must contain at least one sequence per DDP rank.")
+        self._datasets = datasets
+        self._weights = torch.tensor(weights, dtype=torch.double)
+        self._batch_size = batch_size
+        self._seed = seed
+        self._rank = rank
+        self._world_size = world_size
+
+    def __iter__(self):  # type: ignore[override]
+        worker = get_worker_info()
+        worker_id = 0 if worker is None else worker.id
+        generator = torch.Generator()
+        generator.manual_seed(self._seed + 10_007 * self._rank + 1_000_003 * worker_id)
+
+        while True:
+            source_index = int(torch.multinomial(self._weights, 1, generator=generator).item())
+            dataset = self._datasets[source_index]
+            local_length = (len(dataset) - self._rank + self._world_size - 1) // self._world_size
+            local_indices = torch.randint(
+                local_length, (self._batch_size,), generator=generator, dtype=torch.long
+            )
+            global_indices = self._rank + local_indices * self._world_size
+            yield dataset.get_batch(global_indices)
 
 
 def _decompress_gzip_cache(token_path: Path) -> Path:

@@ -442,10 +442,24 @@ class TokensConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class DatasetSourceConfig:
+    """One preprocessed token cache and its relative sampling weight."""
+
+    path: str
+    weight: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path.strip():
+            raise ConfigValidationError("'data.datasets.path' must be a non-empty string.")
+        _require_positive_number("data.datasets.weight", self.weight)
+
+
+@dataclass(frozen=True, slots=True)
 class DataConfig:
     """Preprocessed-data metadata and DataLoader worker settings."""
 
     dataset_token_path: str | None = None
+    datasets: tuple[DatasetSourceConfig, ...] = ()
     tokenizer_name: str | None = None
     vocab_size: int | None = None
     num_workers: int = 4
@@ -453,11 +467,37 @@ class DataConfig:
 
     def __post_init__(self) -> None:
         _require_optional_path("dataset_token_path", self.dataset_token_path)
+        if not isinstance(self.datasets, (list, tuple)):
+            raise ConfigValidationError("'data.datasets' must be a sequence of dataset mappings.")
+        normalized_datasets: list[DatasetSourceConfig] = []
+        for index, source in enumerate(self.datasets):
+            if isinstance(source, Mapping):
+                source = _build_dataclass(source, DatasetSourceConfig, f"data.datasets[{index}]")
+            if not isinstance(source, DatasetSourceConfig):
+                raise ConfigValidationError(
+                    f"'data.datasets[{index}]' must be a dataset source mapping."
+                )
+            normalized_datasets.append(source)
+        if self.dataset_token_path is not None and normalized_datasets:
+            raise ConfigValidationError(
+                "Set either 'data.dataset_token_path' or 'data.datasets', not both."
+            )
+        object.__setattr__(self, "datasets", tuple(normalized_datasets))
         _require_optional_path("tokenizer_name", self.tokenizer_name)
         if self.vocab_size is not None:
             _require_positive_int("data.vocab_size", self.vocab_size)
         _require_nonnegative_int("data.num_workers", self.num_workers)
         _require_positive_int("data.prefetch_factor", self.prefetch_factor)
+
+    @property
+    def dataset_sources(self) -> tuple[DatasetSourceConfig, ...]:
+        """Return configured sources, adapting the legacy singleton path."""
+
+        if self.datasets:
+            return self.datasets
+        if self.dataset_token_path is not None:
+            return (DatasetSourceConfig(path=self.dataset_token_path),)
+        return ()
 
 
 @dataclass(frozen=True, slots=True)
