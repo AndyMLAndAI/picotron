@@ -307,6 +307,11 @@ def _run_info(
         ("attention backend", attention_backend),
         ("DDP world size", str(world_size)),
         ("Triton kernels", triton),
+        (
+            "Triton status",
+            "rmsnorm=real swiglu=real rope=fallback attention=fallback "
+            "cross_entropy=fallback adamw=fallback",
+        ),
         ("parameters", parameter_count),
     )
 
