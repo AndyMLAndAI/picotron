@@ -21,6 +21,8 @@ tokens:
   train_steps: 1
 data:
   vocab_size: 64
+  # Optional for gated Hugging Face models/datasets. HF_TOKEN is used when omitted.
+  hf_token: null
 logging:
   iteration_step_info_interval: 1
 general:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import torch
@@ -55,6 +56,7 @@ def load_model(
         raise ValueError("model_name must be non-empty.")
     if max_seq_length <= 0:
         raise ValueError("max_seq_length must be positive.")
+    kwargs = _with_hf_token(kwargs)
 
     unsloth_result = _try_unsloth_load(
         model_name,
@@ -164,3 +166,14 @@ def _config_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
 
 def _tokenizer_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in kwargs.items() if name in {"revision", "token", "trust_remote_code"}}
+
+
+def _with_hf_token(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Apply the standard HF_TOKEN fallback without overriding an explicit token."""
+
+    resolved = dict(kwargs)
+    if resolved.get("token") is None:
+        environment_token = os.getenv("HF_TOKEN")
+        if environment_token:
+            resolved["token"] = environment_token
+    return resolved

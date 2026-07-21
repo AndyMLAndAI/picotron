@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import MISSING, dataclass, field, fields as dataclass_fields
 from math import cos, pi
 from pathlib import Path
@@ -461,6 +462,7 @@ class DataConfig:
     dataset_token_path: str | None = None
     datasets: tuple[DatasetSourceConfig, ...] = ()
     tokenizer_name: str | None = None
+    hf_token: str | None = None
     vocab_size: int | None = None
     num_workers: int = 4
     prefetch_factor: int = 2
@@ -484,6 +486,7 @@ class DataConfig:
             )
         object.__setattr__(self, "datasets", tuple(normalized_datasets))
         _require_optional_path("tokenizer_name", self.tokenizer_name)
+        _require_optional_path("data.hf_token", self.hf_token)
         if self.vocab_size is not None:
             _require_positive_int("data.vocab_size", self.vocab_size)
         _require_nonnegative_int("data.num_workers", self.num_workers)
@@ -498,6 +501,11 @@ class DataConfig:
         if self.dataset_token_path is not None:
             return (DatasetSourceConfig(path=self.dataset_token_path),)
         return ()
+
+    def resolve_hf_token(self) -> str | None:
+        """Return the explicit Hub token, or the standard environment fallback."""
+
+        return self.hf_token or os.getenv("HF_TOKEN")
 
 
 @dataclass(frozen=True, slots=True)

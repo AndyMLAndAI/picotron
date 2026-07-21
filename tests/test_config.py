@@ -44,6 +44,26 @@ def test_minimal_nested_config_uses_defaults(tmp_path: Path) -> None:
     assert config.parallelism.zero_stage == 0
 
 
+def test_hf_token_prefers_config_over_standard_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "hf_token.yaml"
+    config_path.write_text(
+        REQUIRED_CONFIG.replace("data: {}", "data:\n  hf_token: configured-token"),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HF_TOKEN", "environment-token")
+
+    config = load_config(config_path)
+
+    assert config.data.resolve_hf_token() == "configured-token"
+    assert config.data.hf_token == "configured-token"
+
+    environment_only_path = tmp_path / "hf_token_environment.yaml"
+    environment_only_path.write_text(REQUIRED_CONFIG, encoding="utf-8")
+    assert load_config(environment_only_path).data.resolve_hf_token() == "environment-token"
+
+
 def test_qwen_style_model_kwargs_are_accepted_without_schema_changes(tmp_path: Path) -> None:
     config_path = tmp_path / "qwen3_5.yaml"
     config_path.write_text(
@@ -148,6 +168,7 @@ tokens:
 data:
   dataset_token_path: /tmp/tokens.uint16
   tokenizer_name: gpt2
+  hf_token: gated-model-token
   vocab_size: 64
   num_workers: 3
   prefetch_factor: 4
@@ -173,6 +194,7 @@ general:
     assert not config.checkpoints.load_optimizer
     assert not config.checkpoints.load_lr_scheduler
     assert config.checkpoints.save_final_state
+    assert config.data.hf_token == "gated-model-token"
     assert config.model.dtype == "float32"
     assert config.model.compile_model
     assert all(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
+import os
 from queue import Queue
 from threading import Thread
 from typing import Any
@@ -53,6 +54,7 @@ class StreamingSFTDataset(IterableDataset[dict[str, Tensor]]):
         batch_size: int,
         text_field: str = "text",
         max_length: int | None = None,
+        token: str | None = None,
         **dataset_kwargs: Any,
     ) -> "StreamingSFTDataset":
         """Create a lazy dataset backed by ``datasets.load_dataset(..., streaming=True)``."""
@@ -63,6 +65,12 @@ class StreamingSFTDataset(IterableDataset[dict[str, Tensor]]):
             raise RuntimeError(
                 "Hugging Face streaming requires the optional 'datasets' package."
             ) from error
+        if token is not None:
+            dataset_kwargs["token"] = token
+        elif dataset_kwargs.get("token") is None:
+            environment_token = os.getenv("HF_TOKEN")
+            if environment_token:
+                dataset_kwargs["token"] = environment_token
         source = load_dataset(
             dataset_name,
             split=split,
@@ -138,4 +146,3 @@ class StreamingSFTDataset(IterableDataset[dict[str, Tensor]]):
         if not isinstance(text, str):
             raise ValueError(f"Streaming example field '{self.text_field}' must be a string.")
         return text
-

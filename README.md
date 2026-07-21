@@ -38,6 +38,12 @@ source with weight `1.0`; do not set both forms in the same config. Opening
 the configured token caches shows a `tqdm` startup bar, while the existing
 training display reports optimizer-step progress.
 
+## Hugging Face access
+
+For gated Hugging Face models or datasets, set `data.hf_token` in the run
+configuration. It takes priority over the standard `HF_TOKEN` environment
+variable; leave it `null` for public access or to use the environment value.
+
 ## CPU checks
 
 From this directory, run:
