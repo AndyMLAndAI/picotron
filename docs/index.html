@@ -29,7 +29,7 @@
         <div class="hero-copy reveal">
           <p class="eyebrow">OPENAI BUILD WEEK · DEVELOPER TOOLS</p>
           <h1>Train the model.<br><em>Trust the path.</em></h1>
-          <p class="hero-text">Picotron is a from-scratch, decoder-only LLM pretraining framework built around explicit configuration, safe fallbacks, and verification before scale.</p>
+          <p class="hero-text">Picotron is a from-scratch, decoder-only LLM pretraining framework built around explicit configuration, safe fallbacks, and verification before scale. Experimental SFT and DPO adapters extend the project beyond native pretraining.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="#builder">Build a config <span>↓</span></a>
             <a class="button button-quiet" href="https://github.com/AndyMLAndAI/picotron" target="_blank" rel="noreferrer">View source ↗</a>
@@ -98,6 +98,7 @@
             <div class="code-topline"><span>config.yaml</span><button type="button" class="copy-button" data-copy="config-output">Copy</button></div>
             <pre id="config-output" tabindex="0"><code></code></pre>
             <p class="config-note" data-config-note></p>
+            <a class="advanced-link" href="config-lab.html">Open Advanced Config Lab <span>→</span><small>Multi-dataset mixing, runtime controls, and the complete nested YAML.</small></a>
           </div>
         </div>
       </section>
@@ -142,6 +143,7 @@
           <article class="status-card fallback" data-status="fallback"><span class="status-chip chip-fallback">FALLBACK GUARDED</span><h3>Cross entropy &amp; AdamW</h3><p>Training remains on PyTorch when the guarded fused paths cannot safely serve it.</p></article>
           <article class="status-card real" data-status="real"><span class="status-chip chip-real">IMPLEMENTED</span><h3>Checkpoint state</h3><p>Safetensors weights, optimizer sidecars, and native architecture <code>config.json</code>.</p></article>
           <article class="status-card real" data-status="real"><span class="status-chip chip-real">IMPLEMENTED</span><h3>DDP / ZeRO</h3><p>CPU distributed tests exercise synchronization and state-sharding math; CUDA remains target-GPU work.</p></article>
+          <article class="status-card real" data-status="real"><span class="status-chip chip-real">EXPERIMENTAL</span><h3>SFT / DPO adapters</h3><p>Script-first adapters can train compatible causal-LM models. Treat them as experimental and validate your own model and data path.</p></article>
         </div>
         <p class="status-disclaimer reveal">T4 compatibility means “designed to fall back safely and select fp16,” not “every optional kernel is benchmarked or guaranteed faster.”</p>
       </section>
@@ -156,7 +158,7 @@
         <div class="faq-list reveal">
           <details open><summary>Can I run Picotron on a T4?</summary><p>That is a target environment for the project. The hardware policy selects fp16 on Turing/T4 and rejects bf16 there. Run a small Kaggle smoke test before a long job; performance and memory claims are configuration-specific.</p></details>
           <details><summary>Does the site start a run or send my config anywhere?</summary><p>No. The config builder is client-side JavaScript only. It produces a YAML preview and copy button; it does not upload data, contact the Hub, or execute commands.</p></details>
-          <details><summary>Can I use an existing Hugging Face causal LM?</summary><p>Yes for the SFT/DPO adapters when the model follows the normal causal-LM logits contract. The native pretraining CLI constructs Picotron's own decoder model from its strict configuration.</p></details>
+          <details><summary>Can I use an existing Hugging Face causal LM?</summary><p>Yes: experimental SFT and DPO adapters accept compatible causal-LM logits contracts. The native pretraining CLI constructs Picotron's own decoder model from its strict configuration.</p></details>
           <details><summary>What happens when an optional backend fails?</summary><p>Optional acceleration is guarded. Picotron reports the issue and returns to the relevant PyTorch path rather than silently continuing on an unknown implementation.</p></details>
         </div>
       </section>

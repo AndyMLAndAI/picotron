@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Build a strict nested Picotron training configuration in the browser.">
+    <title>Picotron Config Lab</title>
+    <link rel="stylesheet" href="assets/site.css">
+    <link rel="stylesheet" href="assets/config-lab.css">
+  </head>
+  <body class="lab-body">
+    <a class="skip-link" href="#main">Skip to builder</a>
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="Picotron home"><span class="brand-mark">P</span> PICOTRON</a>
+      <nav class="site-nav lab-nav"><a href="index.html">← Main site</a><a href="https://github.com/AndyMLAndAI/picotron" target="_blank" rel="noreferrer">GitHub ↗</a></nav>
+    </header>
+    <main class="lab-shell" id="main">
+      <section class="lab-hero">
+        <p class="eyebrow">INTERACTIVE CONFIG LAB</p>
+        <h1>Build the whole run<br><em>before you launch it.</em></h1>
+        <p>Every control below generates local-only YAML for Picotron’s strict nested schema. It does not validate hardware capacity, start training, send a request, or upload any data.</p>
+      </section>
+
+      <div class="lab-layout">
+        <form class="lab-controls" data-lab-form>
+          <section class="lab-panel">
+            <h2>Model</h2>
+            <div class="lab-fields lab-fields-2">
+              <label>Vocabulary size <input data-lab="vocab" type="number" min="16" value="50257"></label>
+              <label>Sequence length <input data-lab="sequence" type="number" min="8" step="8" value="512"></label>
+              <label>Hidden size <input data-lab="hidden" type="number" min="16" step="16" value="512"></label>
+              <label>Intermediate size <input data-lab="intermediate" type="number" min="16" step="16" value="1728"></label>
+              <label>Decoder layers <input data-lab="layers" type="number" min="1" value="8"></label>
+              <label>Attention heads <input data-lab="heads" type="number" min="1" value="8"></label>
+            </div>
+            <div class="lab-fields lab-fields-2">
+              <label>Attention type <select data-lab="attention"><option value="mha">MHA</option><option value="gqa" selected>GQA</option><option value="mla">MLA</option></select></label>
+              <label data-lab-kv>KV heads <input data-lab="kvHeads" type="number" min="1" value="2"></label>
+              <label>RoPE theta <input data-lab="ropeTheta" type="number" min="1" value="1000000"></label>
+              <label>Sliding window <input data-lab="window" type="number" min="1" value="256"></label>
+              <label>NoPE layers <input data-lab="nope" type="text" value="2, 3, 4" placeholder="e.g. 2, 3, 4"></label>
+              <label data-lab-mla hidden>KV LoRA rank <input data-lab="mlaRank" type="number" min="1" value="64"></label>
+            </div>
+            <label class="lab-toggle"><input data-lab="moe" type="checkbox"><span></span> Enable MoE on every native decoder block <small>Increases parameter and compute cost.</small></label>
+            <div class="lab-fields lab-fields-3" data-lab-moe hidden>
+              <label>Experts <input data-lab="experts" type="number" min="1" value="4"></label>
+              <label>Top-k <input data-lab="topK" type="number" min="1" value="2"></label>
+              <label>Aux coefficient <input data-lab="aux" type="number" min="0" step="0.001" value="0.01"></label>
+            </div>
+          </section>
+
+          <section class="lab-panel">
+            <h2>Runtime and optimization</h2>
+            <div class="lab-fields lab-fields-3">
+              <label>Dtype <select data-lab="dtype"><option value="auto">auto</option><option value="float16" selected>float16</option><option value="float32">float32</option><option value="bfloat16">bfloat16</option></select></label>
+              <label>Data-parallel ranks <input data-lab="dp" type="number" min="1" value="1"></label>
+              <label>ZeRO stage <select data-lab="zero"><option value="0" selected>0 — DDP</option><option value="1">1 — optimizer sharding</option><option value="2">2 — gradient sharding</option></select></label>
+              <label>Micro batch size <input data-lab="batch" type="number" min="1" value="2"></label>
+              <label>Train steps <input data-lab="steps" type="number" min="1" value="1000"></label>
+              <label>Learning rate <input data-lab="learningRate" type="number" min="0.0000001" step="0.00001" value="0.0003"></label>
+              <label>Weight decay <input data-lab="weightDecay" type="number" min="0" step="0.01" value="0.1"></label>
+              <label>Checkpoint interval <input data-lab="checkpointInterval" type="number" min="1" value="500"></label>
+              <label>Run name <input data-lab="run" type="text" value="experiment"></label>
+            </div>
+            <div class="lab-toggles"><label class="lab-toggle"><input data-lab="compile" type="checkbox"><span></span> Opt in to <code>torch.compile</code></label><label class="lab-toggle"><input data-lab="checkpointing" type="checkbox"><span></span> Gradient checkpointing</label></div>
+          </section>
+
+          <section class="lab-panel dataset-panel">
+            <div class="dataset-heading"><div><h2>Weighted datasets</h2><p>Preprocess each HF source into its own uint16 cache, then interleave at training time by weight.</p></div><button class="add-dataset" data-add-dataset type="button">+ Add dataset</button></div>
+            <div class="dataset-list" data-dataset-list></div>
+          </section>
+        </form>
+
+        <aside class="lab-output" aria-label="Generated configuration">
+          <div class="code-topline"><span>config.yaml</span><button type="button" class="copy-button" data-lab-copy>Copy YAML</button></div>
+          <pre tabindex="0"><code data-lab-output></code></pre>
+          <p class="lab-note" data-lab-note></p>
+          <div class="lab-actions"><a class="button button-primary" href="https://github.com/AndyMLAndAI/picotron#quick-start" target="_blank" rel="noreferrer">Read the quick start ↗</a><a class="button button-quiet" href="index.html#pipeline">See the pipeline</a></div>
+        </aside>
+      </div>
+
+      <section class="lab-disclosure">
+        <h2>What this builder covers</h2>
+        <div><p><strong>Native pretraining:</strong> Picotron’s strict nested config, automatic HF cache materialization, weighted memmap interleaving, DDP, and guarded optional acceleration.</p><p><strong>Experimental adapters:</strong> Picotron also contains SFT and DPO scripting layers for compatible causal-LM models. Their dataset and model paths must be independently verified for your chosen model.</p></div>
+      </section>
+    </main>
+    <div class="toast" role="status" aria-live="polite" data-toast>Copied to clipboard</div>
+    <script src="assets/config-lab.js"></script>
+  </body>
+</html>
