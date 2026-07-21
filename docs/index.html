@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Picotron is a correctness-first, from-scratch framework for decoder-only LLM pretraining.">
+    <title>Picotron — Correctness-first LLM pretraining</title>
+    <link rel="preconnect" href="https://raw.githubusercontent.com">
+    <link rel="stylesheet" href="assets/site.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Picotron home"><span class="brand-mark">P</span> PICOTRON</a>
+      <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" data-menu-button>
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" data-menu>
+        <a href="#why">Why</a>
+        <a href="#builder">Config builder</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#status">Status</a>
+        <a href="https://github.com/AndyMLAndAI/picotron" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero section" id="top">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">OPENAI BUILD WEEK · DEVELOPER TOOLS</p>
+          <h1>Train the model.<br><em>Trust the path.</em></h1>
+          <p class="hero-text">Picotron is a from-scratch, decoder-only LLM pretraining framework built around explicit configuration, safe fallbacks, and verification before scale.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#builder">Build a config <span>↓</span></a>
+            <a class="button button-quiet" href="https://github.com/AndyMLAndAI/picotron" target="_blank" rel="noreferrer">View source ↗</a>
+          </div>
+          <div class="hero-proof" aria-label="Project properties">
+            <span><i class="dot dot-green"></i> Native PyTorch</span>
+            <span><i class="dot dot-yellow"></i> Beta 0.9.8</span>
+            <span><i class="dot dot-blue"></i> T4-aware</span>
+          </div>
+        </div>
+        <div class="hero-art reveal">
+          <div class="hero-glow"></div>
+          <img src="https://raw.githubusercontent.com/AndyMLAndAI/picotron/main/src/banner.png" alt="Picotron banner">
+          <div class="floating-card card-one"><span>CHECKPOINT</span><strong>.safetensors</strong><small>+ architecture config</small></div>
+          <div class="floating-card card-two"><span>FALLBACKS</span><strong>explicit</strong><small>not silent</small></div>
+        </div>
+      </section>
+
+      <section class="ticker" aria-label="Picotron capabilities">
+        <div class="ticker-track">
+          <span>DECODER-ONLY</span><b>✦</b><span>DDP</span><b>✦</b><span>SAFE FALLBACKS</span><b>✦</b><span>SAFETENSORS</span><b>✦</b><span>DATA INTERLEAVING</span><b>✦</b><span>CONFIG-FIRST</span><b>✦</b>
+          <span>DECODER-ONLY</span><b>✦</b><span>DDP</span><b>✦</b><span>SAFE FALLBACKS</span><b>✦</b><span>SAFETENSORS</span><b>✦</b><span>DATA INTERLEAVING</span><b>✦</b><span>CONFIG-FIRST</span><b>✦</b>
+        </div>
+      </section>
+
+      <section class="section statement" id="why">
+        <div class="section-label reveal"><span>01</span><p>THE POINT</p></div>
+        <div class="statement-content reveal">
+          <h2>Fast paths are useful.<br>Silent failure is not.</h2>
+          <p>Picotron keeps the reference path close. Optional acceleration is opt-in, hardware-aware, and guarded. CUDA-specific behavior still needs a real GPU check; the page will not pretend otherwise.</p>
+        </div>
+        <div class="principles reveal">
+          <article><span class="principle-number">01</span><h3>Strict configuration</h3><p>Missing, incompatible, and unknown fields fail at load time.</p></article>
+          <article><span class="principle-number">02</span><h3>Portable state</h3><p>Safetensors weights, optimizer sidecars, and native architecture records travel together.</p></article>
+          <article><span class="principle-number">03</span><h3>Measured claims</h3><p>CPU tests prove logic. Target hardware proves CUDA speed and memory behavior.</p></article>
+        </div>
+      </section>
+
+      <section class="section builder-section" id="builder">
+        <div class="section-label reveal"><span>02</span><p>INTERACTIVE CONFIG</p></div>
+        <div class="builder-heading reveal"><h2>Start with a real,<br>valid configuration.</h2><p>Choose an architecture and data source. The preview is generated locally in your browser; it does not launch training.</p></div>
+        <div class="builder-grid reveal">
+          <form class="config-controls" data-config-form>
+            <fieldset>
+              <legend>Model shape</legend>
+              <label>Vocabulary size <input data-field="vocab" type="number" min="16" step="1" value="50257"></label>
+              <div class="control-row"><label>Hidden size <input data-field="hidden" type="number" min="16" step="16" value="512"></label><label>Layers <input data-field="layers" type="number" min="1" step="1" value="8"></label></div>
+              <div class="control-row"><label>Attention heads <input data-field="heads" type="number" min="1" step="1" value="8"></label><label>Sequence length <input data-field="sequence" type="number" min="8" step="8" value="512"></label></div>
+            </fieldset>
+            <fieldset>
+              <legend>Attention</legend>
+              <label>Attention type <select data-field="attention"><option value="mha">MHA</option><option value="gqa" selected>GQA</option><option value="mla">MLA</option></select></label>
+              <label data-kv-control>KV heads <input data-field="kvHeads" type="number" min="1" step="1" value="2"></label>
+              <label class="toggle"><input data-field="nope" type="checkbox"><span></span> Add NoPE to middle layers</label>
+              <label>Sliding window <select data-field="window"><option value="256" selected>256 tokens</option><option value="none">Full context</option></select></label>
+            </fieldset>
+            <fieldset>
+              <legend>Data and runtime</legend>
+              <label>Data source <select data-field="dataMode"><option value="hf" selected>Hugging Face → automatic cache</option><option value="cache">Existing uint16 token cache</option><option value="synthetic">Synthetic smoke data</option></select></label>
+              <label data-hf-control>Dataset <input data-field="dataset" type="text" value="HuggingFaceFW/fineweb-edu"></label>
+              <label class="toggle"><input data-field="moe" type="checkbox"><span></span> Enable MoE FFN</label>
+              <label class="toggle"><input data-field="compile" type="checkbox"><span></span> Opt in to <code>torch.compile</code></label>
+            </fieldset>
+          </form>
+          <div class="config-output">
+            <div class="code-topline"><span>config.yaml</span><button type="button" class="copy-button" data-copy="config-output">Copy</button></div>
+            <pre id="config-output" tabindex="0"><code></code></pre>
+            <p class="config-note" data-config-note></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section pipeline-section" id="pipeline">
+        <div class="section-label reveal"><span>03</span><p>THE PIPELINE</p></div>
+        <div class="pipeline-heading reveal"><h2>One command.<br>Visible stages.</h2><p>Preprocessing is never hidden behind a “training” label. The CLI reports when it is building or reusing a cache, then starts the run.</p></div>
+        <div class="pipeline-tabs reveal" role="tablist" aria-label="Pipeline modes">
+          <button class="tab active" role="tab" aria-selected="true" data-tab="auto">Auto-cache</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="existing">Existing cache</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="distributed">DDP</button>
+        </div>
+        <div class="pipeline-panel reveal" data-panel="auto">
+          <div class="pipeline-steps"><div><span>01</span><h3>Inspect config</h3><p>Find HF dataset specifications and deterministic cache paths.</p></div><i>→</i><div><span>02</span><h3>Reuse or preprocess</h3><p>Skip a complete cache; otherwise call the existing tokenization tool with progress.</p></div><i>→</i><div><span>03</span><h3>Train</h3><p>Open memmaps, construct the native model, and begin next-token optimization.</p></div></div>
+          <div class="command-box"><code>picotron --config config.yaml</code><button type="button" class="copy-button" data-copy-text="picotron --config config.yaml">Copy</button></div>
+        </div>
+        <div class="pipeline-panel hidden" data-panel="existing">
+          <div class="pipeline-steps"><div><span>01</span><h3>Open memmap</h3><p>Read a fixed uint16 token cache without per-step tokenization.</p></div><i>→</i><div><span>02</span><h3>Mix sources</h3><p>Sample weighted sources throughout the run instead of concatenating corpora.</p></div><i>→</i><div><span>03</span><h3>Train</h3><p>Fixed sequence batches keep the core training path simple.</p></div></div>
+          <div class="command-box"><code>picotron --config config.yaml</code><button type="button" class="copy-button" data-copy-text="picotron --config config.yaml">Copy</button></div>
+        </div>
+        <div class="pipeline-panel hidden" data-panel="distributed">
+          <div class="pipeline-steps"><div><span>01</span><h3>Launch ranks</h3><p>Use one process per GPU through PyTorch's standard launcher.</p></div><i>→</i><div><span>02</span><h3>Shard data</h3><p>Each rank receives a distinct partition; rank 0 owns preprocessing and display.</p></div><i>→</i><div><span>03</span><h3>Synchronize</h3><p>DDP synchronizes gradients; ZeRO can shard optimizer state and gradients.</p></div></div>
+          <div class="command-box"><code>torchrun --standalone --nproc_per_node=2 picotron --config config.yaml</code><button type="button" class="copy-button" data-copy-text="torchrun --standalone --nproc_per_node=2 picotron --config config.yaml">Copy</button></div>
+        </div>
+      </section>
+
+      <section class="section architecture-section">
+        <div class="architecture-copy reveal"><p class="eyebrow">NATIVE DECODER</p><h2>One model class.<br>Explicit switches.</h2><p>The native <code>PicotronDecoderModel</code> is a decoder-only Transformer. Each option is validated before construction, not improvised by a loose config parser.</p><a class="text-link" href="https://github.com/AndyMLAndAI/picotron/blob/main/docs/native_model_audit.md" target="_blank" rel="noreferrer">Read the model audit ↗</a></div>
+        <div class="architecture-map reveal">
+          <div class="map-node input">Token IDs</div><div class="map-arrow">↓</div><div class="map-node">Embeddings <small>RoPE / learned</small></div><div class="map-arrow">↓</div><div class="map-row"><div class="map-node accent">Attention <small>MHA / GQA / MLA</small></div><div class="map-node accent">FFN <small>SwiGLU / MoE</small></div></div><div class="map-arrow">↓</div><div class="map-node output">Vocabulary logits</div>
+        </div>
+      </section>
+
+      <section class="section status-section" id="status">
+        <div class="section-label reveal"><span>04</span><p>STATUS, NOT HYPE</p></div>
+        <div class="status-heading reveal"><h2>Know what is ready<br>and what falls back.</h2><p>Optional acceleration is useful only when the implementation and hardware both support it.</p></div>
+        <div class="status-filter reveal" role="group" aria-label="Filter status cards"><button class="filter active" data-filter="all">All</button><button class="filter" data-filter="real">Training-ready path</button><button class="filter" data-filter="fallback">Fallback guarded</button></div>
+        <div class="status-grid reveal">
+          <article class="status-card real" data-status="real"><span class="status-chip chip-real">TRAINING PATH</span><h3>Triton RMSNorm</h3><p>Fused forward with a mathematically checked PyTorch backward. Actual GPU benefit still needs measurement.</p></article>
+          <article class="status-card real" data-status="real"><span class="status-chip chip-real">TRAINING PATH</span><h3>Triton SwiGLU</h3><p>Fused activation forward with a mathematically checked PyTorch backward.</p></article>
+          <article class="status-card fallback" data-status="fallback"><span class="status-chip chip-fallback">FALLBACK GUARDED</span><h3>RoPE &amp; attention kernels</h3><p>Optional paths do not replace the PyTorch training path when unavailable or unsupported.</p></article>
+          <article class="status-card fallback" data-status="fallback"><span class="status-chip chip-fallback">FALLBACK GUARDED</span><h3>Cross entropy &amp; AdamW</h3><p>Training remains on PyTorch when the guarded fused paths cannot safely serve it.</p></article>
+          <article class="status-card real" data-status="real"><span class="status-chip chip-real">IMPLEMENTED</span><h3>Checkpoint state</h3><p>Safetensors weights, optimizer sidecars, and native architecture <code>config.json</code>.</p></article>
+          <article class="status-card real" data-status="real"><span class="status-chip chip-real">IMPLEMENTED</span><h3>DDP / ZeRO</h3><p>CPU distributed tests exercise synchronization and state-sharding math; CUDA remains target-GPU work.</p></article>
+        </div>
+        <p class="status-disclaimer reveal">T4 compatibility means “designed to fall back safely and select fp16,” not “every optional kernel is benchmarked or guaranteed faster.”</p>
+      </section>
+
+      <section class="section checkpoint-section">
+        <div class="checkpoint-visual reveal"><div class="file-stack"><div class="file file-main"><span>WEIGHTS</span><strong>run.safetensors</strong></div><div class="file"><span>STATE</span><strong>run.optimizer.pt</strong></div><div class="file"><span>ARCHITECTURE</span><strong>config.json</strong></div></div></div>
+        <div class="checkpoint-copy reveal"><p class="eyebrow">SELF-DESCRIBING NATIVE CHECKPOINTS</p><h2>Never guess the<br>architecture again.</h2><p>Native checkpoint directories save an architecture sidecar along with weights. Reload a Picotron model from the checkpoint record instead of recreating its GQA, NoPE, MoE, MLA, or positional settings manually.</p><div class="command-box"><code>from picotron.serialize import load_native_model</code><button type="button" class="copy-button" data-copy-text="from picotron.serialize import load_native_model">Copy</button></div></div>
+      </section>
+
+      <section class="section faq-section">
+        <div class="section-label reveal"><span>05</span><p>FAQ</p></div>
+        <div class="faq-list reveal">
+          <details open><summary>Can I run Picotron on a T4?</summary><p>That is a target environment for the project. The hardware policy selects fp16 on Turing/T4 and rejects bf16 there. Run a small Kaggle smoke test before a long job; performance and memory claims are configuration-specific.</p></details>
+          <details><summary>Does the site start a run or send my config anywhere?</summary><p>No. The config builder is client-side JavaScript only. It produces a YAML preview and copy button; it does not upload data, contact the Hub, or execute commands.</p></details>
+          <details><summary>Can I use an existing Hugging Face causal LM?</summary><p>Yes for the SFT/DPO adapters when the model follows the normal causal-LM logits contract. The native pretraining CLI constructs Picotron's own decoder model from its strict configuration.</p></details>
+          <details><summary>What happens when an optional backend fails?</summary><p>Optional acceleration is guarded. Picotron reports the issue and returns to the relevant PyTorch path rather than silently continuing on an unknown implementation.</p></details>
+        </div>
+      </section>
+
+      <section class="section final-cta reveal">
+        <p class="eyebrow">PICOTRON 0.9.8 BETA</p>
+        <h2>Build it. Verify it.<br>Then scale it.</h2>
+        <div class="hero-actions"><a class="button button-primary" href="https://github.com/AndyMLAndAI/picotron" target="_blank" rel="noreferrer">Open GitHub ↗</a><a class="button button-quiet" href="https://github.com/AndyMLAndAI/picotron#verification" target="_blank" rel="noreferrer">Read verification guide ↗</a></div>
+      </section>
+    </main>
+
+    <footer class="site-footer"><span>© Picotron</span><span>Correctness-first LLM pretraining</span><a href="#top">Back to top ↑</a></footer>
+    <div class="toast" role="status" aria-live="polite" data-toast>Copied to clipboard</div>
+    <script src="assets/site.js"></script>
+  </body>
+</html>
