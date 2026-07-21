@@ -90,3 +90,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         resume_from=args.resume_from,
         device=device,
     )
+
+
+if __name__ == "__main__":
+    main()
