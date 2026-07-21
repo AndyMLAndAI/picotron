@@ -82,7 +82,13 @@ class SFTTrainer:
         losses: list[float] = []
 
         is_primary_rank = distributed_info.rank == 0
-        display = _make_display(self.display_config, step_limit, enabled=is_primary_rank)
+        display = _make_display(
+            self.display_config,
+            step_limit,
+            enabled=is_primary_rank,
+            model=self.model,
+            world_size=distributed_info.world_size,
+        )
         file_config = self.display_config if isinstance(self.display_config, PicotronConfig) else None
         with display, FileLogger(
             file_config, method="sft", enabled=is_primary_rank
@@ -167,10 +173,21 @@ def _as_data_loader(
 
 
 def _make_display(
-    display_config: Any | None, total_steps: int | None, *, enabled: bool = True
+    display_config: Any | None,
+    total_steps: int | None,
+    *,
+    enabled: bool = True,
+    model: nn.Module | None = None,
+    world_size: int = 1,
 ) -> TrainingDisplay | AbstractContextManager[None]:
     return (
-        TrainingDisplay(display_config, total_steps=total_steps, enabled=enabled)
+        TrainingDisplay(
+            display_config,
+            total_steps=total_steps,
+            enabled=enabled,
+            model=model,
+            world_size=world_size,
+        )
         if display_config
         else _NullDisplay()
     )

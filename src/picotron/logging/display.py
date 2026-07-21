@@ -5,6 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any, Mapping
 
+import torch
+from torch import nn
+
 try:
     from rich.console import Console
     from rich.console import Group
@@ -38,6 +41,20 @@ except ImportError:  # pragma: no cover - dependency is declared in requirements
     _TQDM_AVAILABLE = False
 
 from picotron.config.config import PicotronConfig
+from picotron.utils.hardware import (
+    detect_attention_backend,
+    detect_triton_support,
+    get_gpu_compute_capability,
+)
+
+
+PICOTRON_ASCII = r"""
+  ____  _           _
+ |  _ \(_) ___ ___ | |_ _ __ ___  _ __
+ | |_) | |/ __/ _ \| __| '__/ _ \| '_ \
+ |  __/| | (_| (_) | |_| | | (_) | | | |
+ |_|   |_|\___\___/ \__|_|  \___/|_| |_|
+""".strip("\n")
 
 
 class TrainingDisplay:
@@ -52,17 +69,23 @@ class TrainingDisplay:
         plain_interval: int = 10,
         loss_label: str = "loss",
         enabled: bool = True,
+        model: nn.Module | None = None,
+        world_size: int = 1,
     ) -> None:
         if plain_interval <= 0:
             raise ValueError("plain_interval must be positive.")
         if not loss_label:
             raise ValueError("loss_label must be non-empty.")
+        if world_size <= 0:
+            raise ValueError("world_size must be positive.")
         self.config = config
         self.total_steps = total_steps
         self.console = console if console is not None else Console() if _RICH_AVAILABLE else None
         self.plain_interval = plain_interval
         self.loss_label = loss_label
         self.enabled = enabled
+        self.model = model
+        self.world_size = world_size
         self._live = None
         self._progress = None
         self._progress_task = None
@@ -163,8 +186,10 @@ class TrainingDisplay:
         model_config = self.config.model.model_config
         tokens_config = self.config.tokens
         learning_rate = self.config.optimizer.learning_rate_scheduler.learning_rate
+        run_info = _run_info(self.config, self.model, self.world_size)
         if _RICH_AVAILABLE and self.console is not None:
-            banner = Table(title="Picotron training")
+            self.console.print(PICOTRON_ASCII, style="bold cyan")
+            banner = Table(title="Picotron run")
             banner.add_column("Setting")
             banner.add_column("Value")
             for name, value in (
@@ -175,15 +200,17 @@ class TrainingDisplay:
                 ("sequence length", tokens_config.sequence_length),
                 ("batch size", tokens_config.micro_batch_size),
                 ("learning rate", learning_rate),
+                *run_info,
             ):
                 banner.add_row(name, str(value))
             self.console.print(banner)
         else:
             print(
-                "Picotron training: "
+                f"{PICOTRON_ASCII}\nPicotron training: "
                 f"layers={model_config.num_hidden_layers} hidden={model_config.hidden_size} "
                 f"seq_len={tokens_config.sequence_length} "
-                f"batch_size={tokens_config.micro_batch_size} lr={learning_rate}"
+                f"batch_size={tokens_config.micro_batch_size} lr={learning_rate}; "
+                + "; ".join(f"{name}={value}" for name, value in run_info)
             )
 
     def _render_table(self) -> Table:
@@ -239,3 +266,59 @@ def _format_duration(seconds: float) -> str:
     minutes, remainder = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours:d}:{minutes:02d}:{remainder:02d}"
+
+
+def _run_info(
+    config: PicotronConfig, model: nn.Module | None, world_size: int
+) -> tuple[tuple[str, str], ...]:
+    """Summarize hardware and enabled optional runtime features for the banner."""
+
+    capability = get_gpu_compute_capability()
+    if capability is None:
+        gpu = "CPU"
+    else:
+        try:
+            name = torch.cuda.get_device_name(0)
+        except (AssertionError, RuntimeError):
+            name = "CUDA GPU"
+        gpu = f"{torch.cuda.device_count()}x {name} (sm_{capability[0]}{capability[1]})"
+
+    try:
+        dtype = _dtype_label(config.model.resolve_dtype())
+    except Exception:  # The training loop validates unsupported precision first.
+        dtype = config.model.dtype
+    attention_backend = detect_attention_backend().selected.value
+    enabled_kernels = tuple(
+        name
+        for name in ("rmsnorm", "swiglu", "rope", "attention", "cross_entropy", "adamw")
+        if getattr(config.model.triton_kernels, name)
+    )
+    triton_report = detect_triton_support(enabled=bool(enabled_kernels))
+    if not enabled_kernels:
+        triton = "off"
+    elif triton_report.available:
+        triton = "active: " + ", ".join(enabled_kernels)
+    else:
+        triton = "requested; fallback: " + ", ".join(enabled_kernels)
+    parameter_count = "n/a" if model is None else _format_parameter_count(model)
+    return (
+        ("hardware", gpu),
+        ("dtype", dtype),
+        ("attention backend", attention_backend),
+        ("DDP world size", str(world_size)),
+        ("Triton kernels", triton),
+        ("parameters", parameter_count),
+    )
+
+
+def _dtype_label(dtype: torch.dtype) -> str:
+    return {
+        torch.float16: "fp16",
+        torch.bfloat16: "bf16",
+        torch.float32: "fp32",
+    }.get(dtype, str(dtype).removeprefix("torch."))
+
+
+def _format_parameter_count(model: nn.Module) -> str:
+    count = sum(parameter.numel() for parameter in model.parameters())
+    return f"{count / 1_000_000:.2f}M ({count:,})"

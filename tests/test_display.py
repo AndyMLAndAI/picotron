@@ -58,6 +58,22 @@ def test_display_tty_simulation_does_not_crash() -> None:
             assert display._progress.tasks[display._progress_task].completed == 2
 
 
+def test_startup_banner_is_cpu_safe_and_includes_runtime_info() -> None:
+    config = _config()
+    output = StringIO()
+    console = Console(force_terminal=False, file=output) if Console else None
+    model = PicotronDecoderModel(config)
+
+    with TrainingDisplay(config, console=console, model=model, world_size=1):
+        pass
+
+    banner = output.getvalue()
+    assert "Picotron" in banner
+    assert "CPU" in banner
+    assert "attention backend" in banner
+    assert "parameters" in banner
+
+
 def test_disabled_display_emits_no_console_output() -> None:
     """Non-primary DDP ranks must not create a competing live display."""
 

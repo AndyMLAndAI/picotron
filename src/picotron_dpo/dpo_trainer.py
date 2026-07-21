@@ -86,7 +86,7 @@ class DPOTrainer:
         self.ref_model.eval()
         losses: list[float] = []
 
-        display = _make_display(self.display_config, step_limit)
+        display = _make_display(self.display_config, step_limit, model=self.model)
         file_config = self.display_config if isinstance(self.display_config, PicotronConfig) else None
         with display, FileLogger(file_config, method="dpo") as file_logger:
             for batch in self.data_loader:
@@ -306,10 +306,15 @@ def _extract_logits(model_output: Any) -> Tensor:
 
 
 def _make_display(
-    display_config: Any | None, total_steps: int | None
+    display_config: Any | None, total_steps: int | None, *, model: nn.Module | None = None
 ) -> TrainingDisplay | AbstractContextManager[None]:
     return (
-        TrainingDisplay(display_config, total_steps=total_steps, loss_label="dpo_loss")
+        TrainingDisplay(
+            display_config,
+            total_steps=total_steps,
+            loss_label="dpo_loss",
+            model=model,
+        )
         if display_config
         else _NullDisplay()
     )

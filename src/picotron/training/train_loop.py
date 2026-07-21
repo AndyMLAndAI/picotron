@@ -105,6 +105,8 @@ def train(
         total_steps=start_step + target_steps,
         plain_interval=config.logging.iteration_step_info_interval,
         enabled=distributed_info.rank == 0,
+        model=model,
+        world_size=distributed_info.world_size,
     ) as display, FileLogger(
         config,
         method="pretraining",
