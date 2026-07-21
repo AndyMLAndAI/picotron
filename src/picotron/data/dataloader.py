@@ -58,6 +58,10 @@ def create_memmap_dataloader(
     sources = config.data.dataset_sources
     if not sources:
         raise ValueError("A token cache is required for memmap loading.")
+    if any(source.needs_preprocessing for source in sources):
+        raise ValueError(
+            "HF dataset sources must be materialized by the picotron CLI before memmap loading."
+        )
     # Memmaps do not read the corpus eagerly, but opening several large caches
     # can still be visible on networked storage. Keep this startup observable.
     datasets = tuple(

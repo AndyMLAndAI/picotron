@@ -14,6 +14,7 @@ from picotron.data.dataloader import (
     create_memmap_dataloader,
     create_synthetic_dataloader,
 )
+from picotron.data.auto_preprocess import materialize_hf_dataset_sources
 from picotron.models.picotron_decoder import PicotronDecoderModel
 from picotron.parallel.ddp import initialize_distributed
 from picotron.training.train_loop import train
@@ -54,6 +55,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     distributed_info = initialize_distributed(
         expected_world_size=config.parallelism.dp
     )
+    if distributed_info.rank == 0 and getattr(config, "data", None) is not None:
+        config = materialize_hf_dataset_sources(
+            config, project_root=Path(__file__).resolve().parents[2]
+        )
+    if distributed_info.world_size > 1:
+        torch.distributed.barrier()
+        if distributed_info.rank != 0 and getattr(config, "data", None) is not None:
+            config = materialize_hf_dataset_sources(
+                config, project_root=Path(__file__).resolve().parents[2]
+            )
     model = PicotronDecoderModel(config)
     data_config = getattr(config, "data", None)
     if data_config is not None and data_config.dataset_sources:

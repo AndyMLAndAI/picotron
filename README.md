@@ -38,6 +38,20 @@ source with weight `1.0`; do not set both forms in the same config. Opening
 the configured token caches shows a `tqdm` startup bar, while the existing
 training display reports optimizer-step progress.
 
+To let `picotron --config` preprocess missing caches before training, use an
+HF source instead of `path`; the cache filename is derived deterministically
+from the source, tokenizer, and token target:
+
+```yaml
+data:
+  tokenizer_name: gpt2
+  datasets:
+    - hf_name: HuggingFaceFW/fineweb-edu
+      hf_config: CC-MAIN-2024-10
+      target_tokens: 500000000
+      weight: 1.0
+```
+
 ## Hugging Face access
 
 For gated Hugging Face models or datasets, set `data.hf_token` in the run

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from dataclasses import MISSING, asdict, dataclass, field, fields as dataclass_fields
 from math import cos, pi
@@ -444,15 +446,72 @@ class TokensConfig:
 
 @dataclass(frozen=True, slots=True)
 class DatasetSourceConfig:
-    """One preprocessed token cache and its relative sampling weight."""
+    """One token-cache path or an HF source that can be preprocessed on demand."""
 
-    path: str
+    path: str | None = None
     weight: float = 1.0
+    hf_name: str | None = None
+    hf_config: str | None = None
+    target_tokens: int | None = None
+    text_field: str = "text"
 
     def __post_init__(self) -> None:
-        if not isinstance(self.path, str) or not self.path.strip():
-            raise ConfigValidationError("'data.datasets.path' must be a non-empty string.")
+        has_path = isinstance(self.path, str) and bool(self.path.strip())
+        has_hf_name = isinstance(self.hf_name, str) and bool(self.hf_name.strip())
+        if not has_path and not has_hf_name:
+            raise ConfigValidationError(
+                "Each data.datasets entry requires either a non-empty 'path' or 'hf_name'."
+            )
+        if has_path and has_hf_name:
+            raise ConfigValidationError(
+                "Each data.datasets entry must use either 'path' or 'hf_name', not both."
+            )
+        if self.path is not None and not has_path:
+            raise ConfigValidationError("'data.datasets.path' must be a non-empty string when provided.")
+        if self.hf_name is not None and not has_hf_name:
+            raise ConfigValidationError("'data.datasets.hf_name' must be a non-empty string when provided.")
+        if self.hf_config is not None and (
+            not isinstance(self.hf_config, str) or not self.hf_config.strip()
+        ):
+            raise ConfigValidationError("'data.datasets.hf_config' must be a non-empty string when provided.")
+        if has_path and any(value is not None for value in (self.hf_config, self.target_tokens)):
+            raise ConfigValidationError(
+                "Path-based data.datasets entries cannot include HF preprocessing fields."
+            )
+        if has_hf_name:
+            if self.target_tokens is None:
+                raise ConfigValidationError(
+                    "HF data.datasets entries require a positive 'target_tokens' value."
+                )
+            _require_positive_int("data.datasets.target_tokens", self.target_tokens)
+        if not isinstance(self.text_field, str) or not self.text_field.strip():
+            raise ConfigValidationError("'data.datasets.text_field' must be a non-empty string.")
         _require_positive_number("data.datasets.weight", self.weight)
+
+    @property
+    def needs_preprocessing(self) -> bool:
+        """Whether this source needs an HF-to-token-cache preprocessing step."""
+
+        return self.hf_name is not None
+
+    def cache_path(self, *, tokenizer_name: str, cache_dir: str) -> str:
+        """Return the deterministic raw uint16 cache path for an HF source."""
+
+        if not self.needs_preprocessing:
+            assert self.path is not None
+            return self.path
+        identity = json.dumps(
+            {
+                "hf_name": self.hf_name,
+                "hf_config": self.hf_config,
+                "tokenizer_name": tokenizer_name,
+                "target_tokens": self.target_tokens,
+                "text_field": self.text_field,
+            },
+            sort_keys=True,
+        )
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+        return str(Path(cache_dir) / f"tokens_{digest}.uint16")
 
 
 @dataclass(frozen=True, slots=True)
@@ -463,6 +522,7 @@ class DataConfig:
     datasets: tuple[DatasetSourceConfig, ...] = ()
     tokenizer_name: str | None = None
     hf_token: str | None = None
+    token_cache_dir: str = "data/token_cache"
     vocab_size: int | None = None
     num_workers: int = 4
     prefetch_factor: int = 2
@@ -487,6 +547,11 @@ class DataConfig:
         object.__setattr__(self, "datasets", tuple(normalized_datasets))
         _require_optional_path("tokenizer_name", self.tokenizer_name)
         _require_optional_path("data.hf_token", self.hf_token)
+        _require_optional_path("data.token_cache_dir", self.token_cache_dir)
+        if any(source.needs_preprocessing for source in normalized_datasets) and self.tokenizer_name is None:
+            raise ConfigValidationError(
+                "'data.tokenizer_name' is required when data.datasets includes hf_name sources."
+            )
         if self.vocab_size is not None:
             _require_positive_int("data.vocab_size", self.vocab_size)
         _require_nonnegative_int("data.num_workers", self.num_workers)
