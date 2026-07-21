@@ -6,11 +6,39 @@
 
 <p align="center">
   A correctness-first, from-scratch PyTorch framework for decoder-only LLM pretraining.<br>
-  Native model · token-cache data pipeline · safetensors checkpoints · DDP · ZeRO · SFT/DPO adapters
+  Native pretraining · token-cache data pipeline · safetensors checkpoints · T4-aware acceleration
+</p>
+
+<p align="center">
+  <a href="https://github.com/AndyMLAndAI/picotron/releases/tag/v0.9.8">v0.9.8 Beta</a>
+  · <a href="https://andymlandai.github.io/picotron/">Interactive project site</a>
+  · <a href="https://youtu.be/ciUhfGlGgaw">Build Week demo video</a>
 </p>
 
 > [!WARNING]
 > Picotron is hackathon software, not a production training platform. CPU tests cover the core logic, but every CUDA-specific configuration—especially Triton, xFormers, fp16, DDP, and ZeRO—must be validated on the target GPU before a long run. The project deliberately prefers a guarded PyTorch fallback over a fast path that might silently be wrong.
+
+## v0.9.8 Beta: what is real today
+
+This is Picotron's first public release. The primary, demo-ready workflow is **native decoder pretraining**: strict configuration, Hugging Face token-cache preprocessing, fp16 T4-aware execution, guarded Triton RMSNorm/SwiGLU, safetensors checkpoints, and native inference.
+
+Recent additions in this release include:
+
+- A one-command `picotron --config config.yaml` workflow that can preprocess missing Hugging Face token caches before training.
+- A self-documenting safetensors checkpoint format with a native `config.json` sidecar.
+- Rich/tqdm progress output that stays readable in Kaggle notebooks, plus CSV and plain-text run logs.
+- A hardware banner and an explicit Triton forward/backward probe, so a requested kernel cannot silently fall back during the demo run.
+- An interactive GitHub Pages configuration lab and Kaggle-ready native-pretraining notebook.
+
+### Primary path vs. experimental work
+
+| Status | Included capability |
+| --- | --- |
+| **Primary release path** | Native Picotron pretraining, token caches, safetensors checkpoints/resume, configuration validation, logging, and short native inference. |
+| **Hardware-validated demo path** | fp16 Turing/T4 execution and the Triton RMSNorm/SwiGLU probe. Exact throughput, memory use, and kernel numerics must still be checked for each target GPU and configuration. |
+| **Experimental** | DDP/ZeRO scaling, xFormers/`torch.compile` tuning, MoE/MLA combinations, arbitrary-HF-model SFT, and DPO. These interfaces are present for exploration, but they are not the basis of the submission demo or a production compatibility guarantee. |
+
+The word **Beta** is intentional: Picotron exposes its implementation and limitations rather than hiding them behind a claim of universal support.
 
 ## Why Picotron?
 
@@ -27,6 +55,7 @@ The goal is not to claim every modern optimization. The goal is to make each imp
 ## Contents
 
 - [Installation](#installation)
+- [v0.9.8 Beta: what is real today](#v098-beta-what-is-real-today)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Data pipelines](#data-pipelines)
@@ -36,6 +65,7 @@ The goal is not to claim every modern optimization. The goal is to make each imp
 - [Fine-tuning and preference optimization](#fine-tuning-and-preference-optimization)
 - [Hardware and optional acceleration](#hardware-and-optional-acceleration)
 - [Observability](#observability)
+- [Built with Codex](#built-with-codex)
 - [Verification](#verification)
 - [Current limitations](#current-limitations)
 
@@ -516,6 +546,14 @@ At startup, Picotron prints an ASCII banner and run summary: hardware, selected 
 - File logging is enabled by default and writes `metrics.csv` and `run.log` under `logs/<run-name>/`.
 
 The CSV includes core metrics (`step`, `loss`, learning rate, tokens/sec, elapsed time) and can accept method-specific trainer metrics. The log records startup configuration and warnings so runs are inspectable after a Kaggle session ends.
+
+## Built with Codex
+
+Picotron was built for OpenAI Build Week with **Codex and GPT-5.6 as an active engineering collaborator**, not as a one-shot code generator.
+
+Codex helped break the rebuild into small, testable milestones; structure the Python packages; write and review unit tests; refactor configuration and checkpoint handling; build the project documentation and interactive site; and turn real Kaggle failures into targeted fixes. A concrete example is the Triton work: target-GPU logs exposed runtime dtype and Turing-lowering failures that CPU checks could not reveal. Codex helped trace those failures, preserve guarded fallbacks, add an explicit pretraining probe, and produce a reproducible Kaggle workflow.
+
+The project author drove the product direction, chose the scope, operated the real Kaggle GPU runs, supplied the hardware results, and made the final decisions about what is represented as primary versus experimental. This human-in-the-loop process is central to Picotron's correctness-first approach: generated code is useful, but real execution and explicit verification decide what ships.
 
 ## Verification
 
