@@ -1,5 +1,6 @@
 """CPU verification of exact checkpoint resume behavior."""
 
+import json
 from pathlib import Path
 from dataclasses import replace
 
@@ -10,7 +11,7 @@ from safetensors.torch import load_file
 
 from picotron.config.config import load_config
 from picotron.models.picotron_decoder import PicotronDecoderModel
-from picotron.serialize.checkpoint import load_checkpoint
+from picotron.serialize.checkpoint import load_checkpoint, load_native_model
 from picotron.training.train_loop import train
 
 
@@ -107,3 +108,42 @@ def test_checkpoint_weights_are_directly_loadable_safetensors(tmp_path: Path) ->
     assert set(direct_weights) == set(model.state_dict())
     for name, value in model.state_dict().items():
         torch.testing.assert_close(direct_weights[name], value.detach().cpu())
+
+
+def test_native_checkpoint_writes_architecture_sidecar_and_reconstructs_model(tmp_path: Path) -> None:
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
+    config = load_config(config_path)
+    model = PicotronDecoderModel(config)
+    optimizer = AdamW(model.parameters(), lr=0.001)
+    checkpoint_path = tmp_path / "native.safetensors"
+
+    from picotron.serialize.checkpoint import save_checkpoint
+
+    save_checkpoint(model, optimizer, step=1, path=checkpoint_path)
+
+    sidecar_path = tmp_path / "config.json"
+    saved_config = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert saved_config["model"]["model_config"] == {
+        "attention_type": "mha",
+        "gradient_checkpointing": False,
+        "hidden_size": 32,
+        "intermediate_size": 64,
+        "kv_lora_rank": None,
+        "model_kwargs": {},
+        "moe_config": None,
+        "nope_layers": [],
+        "num_attention_heads": 4,
+        "num_hidden_layers": 2,
+        "num_key_value_heads": None,
+        "position_embedding_type": "rope",
+        "rope_theta": 10000.0,
+        "sliding_window_size": None,
+        "tie_word_embeddings": False,
+        "vocab_size": 64,
+    }
+
+    reconstructed = load_native_model(checkpoint_path)
+    assert isinstance(reconstructed, PicotronDecoderModel)
+    assert reconstructed.config == config
+    for name, value in model.state_dict().items():
+        torch.testing.assert_close(reconstructed.state_dict()[name], value)

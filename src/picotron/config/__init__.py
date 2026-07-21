@@ -17,6 +17,8 @@ from picotron.config.config import (
     PicotronConfig,
     TokensConfig,
     TritonKernelsConfig,
+    config_from_dict,
+    config_to_dict,
     load_config,
 )
 
@@ -37,5 +39,7 @@ __all__ = [
     "PicotronConfig",
     "TokensConfig",
     "TritonKernelsConfig",
+    "config_from_dict",
+    "config_to_dict",
     "load_config",
 ]

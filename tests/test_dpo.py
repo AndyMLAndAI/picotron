@@ -88,6 +88,35 @@ def test_dpo_increases_chosen_margin_and_keeps_reference_frozen() -> None:
     assert reference_unchanged
 
 
+def test_dpo_can_reconstruct_native_model_from_checkpoint(tmp_path: Path) -> None:
+    config_path = Path(__file__).resolve().parents[1] / "src/picotron/config/picotron_decoder.yaml"
+    loaded_config = load_config(config_path)
+    config = replace(loaded_config, tokens=replace(loaded_config.tokens, sequence_length=4))
+    tokenizer = _PreferenceTokenizer()
+    dataset = PreferenceDataset([("P", "A", "B")] * 4, tokenizer, max_length=4)
+    data_loader = DataLoader(
+        dataset,
+        batch_size=1,
+        collate_fn=lambda examples: collate_preference_batch(examples, pad_token_id=0),
+    )
+    source_model = PicotronDecoderModel(config)
+    source_optimizer = AdamW(source_model.parameters(), lr=0.001)
+    checkpoint_path = tmp_path / "native_dpo.safetensors"
+    from picotron.serialize.checkpoint import save_checkpoint
+
+    save_checkpoint(source_model, source_optimizer, step=0, path=checkpoint_path)
+    trainer = DPOTrainer(
+        None,
+        data_loader,
+        base_checkpoint_path=checkpoint_path,
+        num_steps=1,
+    )
+
+    assert isinstance(trainer.model, PicotronDecoderModel)
+    assert trainer.model.config == config
+    assert len(trainer.train()) == 1
+
+
 def _margin(model: PicotronDecoderModel, batch: dict[str, torch.Tensor]) -> torch.Tensor:
     chosen = _sequence_log_probability(model(batch["chosen_input_ids"]), batch["chosen_labels"])
     rejected = _sequence_log_probability(model(batch["rejected_input_ids"]), batch["rejected_labels"])

@@ -87,3 +87,13 @@ def test_sft_loads_picotron_checkpoint_and_learns_new_data(tmp_path: Path) -> No
     print(f"resumed_first_loss={losses[0]:.6f} resumed_last_loss={losses[-1]:.6f}")
     assert len(losses) == 10
     assert sum(losses[-3:]) / 3 < sum(losses[:3]) / 3
+
+    auto_loaded_losses = run_sft(
+        None,
+        sft_loader,
+        base_checkpoint_path=str(checkpoint_path),
+        learning_rate=base_config.optimizer.learning_rate_scheduler.learning_rate,
+        batch_size=base_config.tokens.micro_batch_size,
+        num_steps=2,
+    )
+    assert len(auto_loaded_losses) == 2

@@ -16,7 +16,7 @@ from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
 from picotron.logging.file_logger import FileLogger
 from picotron.parallel.ddp import initialize_distributed, wrap_model
-from picotron.serialize.checkpoint import load_checkpoint
+from picotron.serialize.checkpoint import load_checkpoint, load_native_model
 class SFTTrainer:
     """Fine-tune a causal LM on standard ``input_ids``/``labels`` batches.
 
@@ -27,7 +27,7 @@ class SFTTrainer:
 
     def __init__(
         self,
-        model: nn.Module,
+        model: nn.Module | None,
         data_loader: Iterable[Mapping[str, Tensor] | tuple[Tensor, Tensor]],
         *,
         base_checkpoint_path: str | None = None,
@@ -45,6 +45,10 @@ class SFTTrainer:
             raise ValueError("weight_decay must be non-negative.")
         if num_steps is not None and num_steps <= 0:
             raise ValueError("num_steps must be positive when provided.")
+        if model is None:
+            if base_checkpoint_path is None:
+                raise ValueError("model is required unless base_checkpoint_path is a native Picotron checkpoint.")
+            model = load_native_model(base_checkpoint_path, device=device)
         self.model = model
         self.data_loader = data_loader
         self.base_checkpoint_path = base_checkpoint_path
@@ -122,7 +126,7 @@ class SFTTrainer:
 
 
 def run_sft(
-    model: nn.Module,
+    model: nn.Module | None,
     dataset: Dataset[Any] | Iterable[Mapping[str, Tensor] | tuple[Tensor, Tensor]],
     *,
     base_checkpoint_path: str | None = None,

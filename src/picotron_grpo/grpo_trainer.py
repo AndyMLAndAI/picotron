@@ -18,6 +18,7 @@ from torch.optim import AdamW, Optimizer
 from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
 from picotron.logging.file_logger import FileLogger
+from picotron.serialize.checkpoint import load_native_model
 
 
 RewardFunction = Callable[[str, str], float]
@@ -39,7 +40,7 @@ class GRPOTrainer:
 
     def __init__(
         self,
-        model: nn.Module,
+        model: nn.Module | None,
         prompts: Sequence[str],
         reward_fn: RewardFunction,
         *,
@@ -57,6 +58,7 @@ class GRPOTrainer:
         device: torch.device | str = torch.device("cpu"),
         display_config: Any | None = None,
         model_kwargs: Mapping[str, Any] | None = None,
+        base_checkpoint_path: str | None = None,
     ) -> None:
         if not prompts:
             raise ValueError("prompts must contain at least one non-empty prompt.")
@@ -80,8 +82,12 @@ class GRPOTrainer:
             raise ValueError("advantage_epsilon must be positive.")
         if num_steps is not None and num_steps <= 0:
             raise ValueError("num_steps must be positive when provided.")
-        if ref_model is model:
+        if ref_model is model and model is not None:
             raise ValueError("ref_model must be a separate model from the trainable policy.")
+        if model is None:
+            if base_checkpoint_path is None:
+                raise ValueError("model is required unless base_checkpoint_path is a native Picotron checkpoint.")
+            model = load_native_model(base_checkpoint_path, device=device)
         if not hasattr(model, "generate"):
             raise TypeError(
                 "GRPO requires a model.generate() method. PicotronDecoderModel does not "
@@ -249,7 +255,7 @@ class GRPOTrainer:
 
 
 def run_grpo(
-    model: nn.Module,
+    model: nn.Module | None,
     prompts: Sequence[str],
     reward_fn: RewardFunction,
     *,
@@ -266,6 +272,7 @@ def run_grpo(
     optimizer: Optimizer | None = None,
     device: torch.device | str = torch.device("cpu"),
     display_config: Any | None = None,
+    base_checkpoint_path: str | None = None,
     **model_kwargs: Any,
 ) -> list[float]:
     """Run GRPO directly from text prompts and a user-defined reward function."""
@@ -288,6 +295,7 @@ def run_grpo(
         device=device,
         display_config=display_config,
         model_kwargs=model_kwargs,
+        base_checkpoint_path=base_checkpoint_path,
     ).train()
 
 

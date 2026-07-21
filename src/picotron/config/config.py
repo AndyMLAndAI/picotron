@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import MISSING, dataclass, field, fields as dataclass_fields
+from dataclasses import MISSING, asdict, dataclass, field, fields as dataclass_fields
 from math import cos, pi
 from pathlib import Path
 from typing import Any, Mapping
@@ -625,6 +625,20 @@ def load_config(path: str | Path) -> PicotronConfig:
         raise ConfigValidationError(
             f"Invalid YAML in configuration file '{config_path}': {error}"
         ) from error
+    return _build_dataclass(raw_config, PicotronConfig, "configuration")
+
+
+def config_to_dict(config: PicotronConfig) -> dict[str, Any]:
+    """Convert a validated Picotron configuration into JSON-safe nested data."""
+
+    if not isinstance(config, PicotronConfig):
+        raise TypeError("config must be a PicotronConfig.")
+    return asdict(config)
+
+
+def config_from_dict(raw_config: Mapping[str, Any]) -> PicotronConfig:
+    """Build and validate a Picotron configuration from nested JSON/YAML data."""
+
     return _build_dataclass(raw_config, PicotronConfig, "configuration")
 
 

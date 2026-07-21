@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from picotron.config.config import PicotronConfig
 from picotron.logging.display import TrainingDisplay
 from picotron.logging.file_logger import FileLogger
-from picotron.serialize.checkpoint import load_checkpoint
+from picotron.serialize.checkpoint import load_checkpoint, load_native_model
 from picotron_dpo.data import (
     PreferenceDataset,
     PreferenceTriple,
@@ -31,7 +31,7 @@ class DPOTrainer:
 
     def __init__(
         self,
-        model: nn.Module,
+        model: nn.Module | None,
         data_loader: Iterable[Mapping[str, Tensor]],
         *,
         ref_model: nn.Module | None = None,
@@ -53,8 +53,13 @@ class DPOTrainer:
             raise ValueError("weight_decay must be non-negative.")
         if num_steps is not None and num_steps <= 0:
             raise ValueError("num_steps must be positive when provided.")
-        if ref_model is model:
+        if ref_model is model and model is not None:
             raise ValueError("ref_model must be a separate model from the trainable policy.")
+
+        if model is None:
+            if base_checkpoint_path is None:
+                raise ValueError("model is required unless base_checkpoint_path is a native Picotron checkpoint.")
+            model = load_native_model(base_checkpoint_path, device=device)
 
         self.model = model
         self.data_loader = data_loader
@@ -165,7 +170,7 @@ class DPOTrainer:
 
 
 def run_dpo(
-    model: nn.Module,
+    model: nn.Module | None,
     dataset: (
         Sequence[PreferenceTriple | Mapping[str, str]]
         | Dataset[PreferenceTriple | Mapping[str, str] | dict[str, Tensor]]

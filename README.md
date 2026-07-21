@@ -44,6 +44,15 @@ For gated Hugging Face models or datasets, set `data.hf_token` in the run
 configuration. It takes priority over the standard `HF_TOKEN` environment
 variable; leave it `null` for public access or to use the environment value.
 
+## Native checkpoint architecture sidecar
+
+Every native `PicotronDecoderModel` safetensors checkpoint also writes
+`config.json` beside its weights. It records the complete validated model
+architecture (including GQA, RoPE/NoPE, MoE, MLA, and Triton settings).
+`load_native_model(checkpoint_path)` reconstructs the model from that sidecar;
+SFT and DPO can use the same path by passing `model=None` with
+`base_checkpoint_path`.
+
 ## CPU checks
 
 From this directory, run:

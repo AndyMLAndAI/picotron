@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from torch import nn
 from torch.nn.parallel import DistributedDataParallel
 from torch.optim import Optimizer
 
+from picotron.config.config import PicotronConfig, config_from_dict, config_to_dict
 from picotron.parallel.zero import ZeroOptimizer
 
 
@@ -46,6 +48,7 @@ def save_checkpoint(
     }
     save_file(state_dict, str(weights_path))
     torch.save({"optimizer_state_dict": optimizer.state_dict(), "step": step}, metadata_path)
+    _save_native_config(checkpoint_model, weights_path)
 
 
 def load_checkpoint(
@@ -87,6 +90,35 @@ def load_checkpoint(
         if load_optimizer:
             optimizer.load_state_dict(payload["optimizer_state_dict"])
     return payload["step"]
+
+
+def load_native_model(
+    path: str | Path, *, device: torch.device | str = torch.device("cpu")
+) -> nn.Module:
+    """Reconstruct a native Picotron decoder from its checkpoint-sidecar config."""
+
+    weights_path, _ = _checkpoint_paths(path)
+    config_path = _native_config_path(weights_path)
+    if not weights_path.exists():
+        raise FileNotFoundError(f"Checkpoint weights not found: {weights_path}")
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"Native checkpoint config not found: {config_path}. "
+            "This checkpoint may be an HF model or was saved before config sidecars existed."
+        )
+    try:
+        raw_config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Could not read native checkpoint config '{config_path}': {error}") from error
+    if not isinstance(raw_config, Mapping):
+        raise ValueError("Native checkpoint config must contain a JSON object.")
+
+    from picotron.models.picotron_decoder import PicotronDecoderModel
+
+    target_device = torch.device(device)
+    model = PicotronDecoderModel(config_from_dict(raw_config)).to(target_device)
+    model.load_state_dict(load_file(str(weights_path), device=str(target_device)))
+    return model
 
 
 def _unwrap_ddp_model(model: nn.Module) -> nn.Module:
@@ -138,6 +170,7 @@ def _save_distributed_zero_checkpoint(
         torch.save(
             {"step": step, "zero_world_size": optimizer.world_size}, metadata_path
         )
+        _save_native_config(checkpoint_model, weights_path)
     torch.save(optimizer.state_dict(), _zero_optimizer_path(weights_path, optimizer.rank))
 
 
@@ -165,3 +198,23 @@ def _load_distributed_zero_optimizer(
 
 def _zero_optimizer_path(weights_path: Path, rank: int) -> Path:
     return weights_path.with_suffix(f".optimizer.rank{rank}.pt")
+
+
+def _native_config_path(weights_path: Path) -> Path:
+    """Return the required run-level native architecture sidecar path."""
+
+    return weights_path.parent / "config.json"
+
+
+def _save_native_config(model: nn.Module, weights_path: Path) -> None:
+    """Write native architecture settings when the model owns a Picotron config."""
+
+    config = getattr(model, "config", None)
+    if not isinstance(config, PicotronConfig):
+        return
+    config_path = _native_config_path(weights_path)
+    try:
+        serialized = json.dumps(config_to_dict(config), indent=2, sort_keys=True)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Native checkpoint config is not JSON serializable: {error}") from error
+    config_path.write_text(serialized + "\n", encoding="utf-8")
