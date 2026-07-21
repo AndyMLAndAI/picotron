@@ -1,1 +1,7 @@
 logs/
+
+# GRPO is excluded from the submission until its training path is verified.
+/src/picotron_grpo/
+/scripts/grpo.py
+/tests/test_grpo.py
+/tests/kaggle_demo_smollm2_sft_dpo_grpo.ipynb
