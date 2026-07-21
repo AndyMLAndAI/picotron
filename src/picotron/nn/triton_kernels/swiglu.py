@@ -29,7 +29,13 @@ if _TRITON_AVAILABLE:
         mask = offsets < num_elements
         gate = tl.load(gate_ptr + offsets, mask=mask, other=0.0)
         up = tl.load(up_ptr + offsets, mask=mask, other=0.0)
-        output = (gate * tl.sigmoid(gate)) * up
+        # Spell out sigmoid rather than using ``tl.sigmoid``. Kaggle's bundled
+        # Triton compiler rejects the mixed-precision lowering of that helper
+        # on Turing, while ``exp`` is supported on the same runtime.
+        gate_fp32 = gate.to(tl.float32)
+        up_fp32 = up.to(tl.float32)
+        sigmoid_gate = 1.0 / (1.0 + tl.exp(-gate_fp32))
+        output = (gate_fp32 * sigmoid_gate) * up_fp32
         # ``tl.store`` casts to the output pointer element type itself. Value
         # tensors do not expose ``dtype.element_ty`` on Kaggle's Triton build.
         tl.store(output_ptr + offsets, output, mask=mask)
