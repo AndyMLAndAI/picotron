@@ -1,5 +1,8 @@
 logs/
 
+# Kaggle/demo notebooks are local run artifacts, not release source.
+/tests/*.ipynb
+
 # GRPO is excluded from the submission until its training path is verified.
 /src/picotron_grpo/
 /scripts/grpo.py
