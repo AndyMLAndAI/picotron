@@ -45,9 +45,8 @@ if _TRITON_AVAILABLE:
         sine = tl.load(sine_ptr + table_offsets, mask=mask, other=0.0)
         rotated_even = even * cosine - odd * sine
         rotated_odd = even * sine + odd * cosine
-        # Modern Triton dtype API: element_ty, not the removed dtype_element.
-        tl.store(output_ptr + state_offsets, rotated_even.to(even.dtype.element_ty), mask=mask)
-        tl.store(output_ptr + state_offsets + 1, rotated_odd.to(even.dtype.element_ty), mask=mask)
+        tl.store(output_ptr + state_offsets, rotated_even, mask=mask)
+        tl.store(output_ptr + state_offsets + 1, rotated_odd, mask=mask)
 
 
 def triton_apply_rotary_embedding(states: Tensor, cosine: Tensor, sine: Tensor) -> Tensor:

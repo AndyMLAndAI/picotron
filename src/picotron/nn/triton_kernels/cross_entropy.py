@@ -42,8 +42,7 @@ if _TRITON_AVAILABLE:
         log_sum_exp = maximum + tl.log(tl.sum(tl.exp(logits_fp32 - maximum), axis=0))
         target = tl.load(targets_ptr + row)
         target_logit = tl.load(logits_ptr + row * vocab_size + target).to(tl.float32)
-        # Modern Triton dtype API: element_ty, not the removed dtype_element.
-        tl.store(losses_ptr + row, (log_sum_exp - target_logit).to(logits.dtype.element_ty))
+        tl.store(losses_ptr + row, log_sum_exp - target_logit)
 
 
 def triton_cross_entropy(logits: Tensor, targets: Tensor) -> Tensor:

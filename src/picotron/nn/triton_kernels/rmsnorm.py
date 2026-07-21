@@ -41,12 +41,9 @@ if _TRITON_AVAILABLE:
         inverse_rms = tl.rsqrt(variance + eps)
         weights = tl.load(weight_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         output_values = input_fp32 * inverse_rms * weights
-        # Modern Triton dtype API: element_ty, not the removed dtype_element.
-        tl.store(
-            output_ptr + row * row_stride + offsets,
-            output_values.to(input_values.dtype.element_ty),
-            mask=mask,
-        )
+        # ``tl.store`` casts to the output pointer element type itself. Value
+        # tensors do not expose ``dtype.element_ty`` on Kaggle's Triton build.
+        tl.store(output_ptr + row * row_stride + offsets, output_values, mask=mask)
 
 
 def _inverse_rms(hidden_states: Tensor, eps: float) -> Tensor:

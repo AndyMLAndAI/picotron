@@ -103,12 +103,7 @@ if _TRITON_AVAILABLE:
             ((batch_index * num_query_heads + query_head_index) * sequence_length)
             + query_positions[:, None]
         ) * HEAD_DIM + dimension_offsets[None, :]
-        # Modern Triton dtype API: element_ty, not the removed dtype_element.
-        tl.store(
-            output_ptr + output_offsets,
-            output.to(query.dtype.element_ty),
-            mask=query_mask,
-        )
+        tl.store(output_ptr + output_offsets, output, mask=query_mask)
 
 
 def triton_causal_attention(

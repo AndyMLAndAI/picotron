@@ -30,8 +30,9 @@ if _TRITON_AVAILABLE:
         gate = tl.load(gate_ptr + offsets, mask=mask, other=0.0)
         up = tl.load(up_ptr + offsets, mask=mask, other=0.0)
         output = (gate * tl.sigmoid(gate)) * up
-        # Modern Triton dtype API: element_ty, not the removed dtype_element.
-        tl.store(output_ptr + offsets, output.to(gate.dtype.element_ty), mask=mask)
+        # ``tl.store`` casts to the output pointer element type itself. Value
+        # tensors do not expose ``dtype.element_ty`` on Kaggle's Triton build.
+        tl.store(output_ptr + offsets, output, mask=mask)
 
 
 def _run_triton_forward(gate: Tensor, up: Tensor) -> Tensor:
