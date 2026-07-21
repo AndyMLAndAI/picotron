@@ -58,6 +58,24 @@ def test_display_tty_simulation_does_not_crash() -> None:
             assert display._progress.tasks[display._progress_task].completed == 2
 
 
+def test_notebook_capture_forces_tqdm_fallback(monkeypatch) -> None:
+    """Kaggle-style child processes must not turn each Live refresh into a table."""
+
+    config = _config()
+    output = StringIO()
+    console = Console(force_terminal=True, file=output) if Console else None
+    monkeypatch.setenv("KAGGLE_KERNEL_RUN_TYPE", "Interactive")
+
+    with TrainingDisplay(config, total_steps=4, console=console, plain_interval=2) as display:
+        assert not display.use_live
+        display.update(step=1, loss=1.0, learning_rate=0.001, tokens_seen=32)
+        if display._fallback_progress is not None:
+            assert display._fallback_progress.n == 0
+        display.update(step=2, loss=0.9, learning_rate=0.001, tokens_seen=64)
+        if display._fallback_progress is not None:
+            assert display._fallback_progress.n == 2
+
+
 def test_startup_banner_is_cpu_safe_and_includes_runtime_info() -> None:
     config = _config()
     output = StringIO()

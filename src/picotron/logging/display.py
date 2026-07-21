@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Mapping
 
@@ -57,6 +58,15 @@ PICOTRON_ASCII = r"""
 """.strip("\n")
 
 
+_CAPTURED_NOTEBOOK_ENVIRONMENT_MARKERS = (
+    "KAGGLE_KERNEL_RUN_TYPE",
+    "KAGGLE_URL_BASE",
+    "JPY_PARENT_PID",
+    "IPYKERNEL_KERNEL_ID",
+    "COLAB_GPU",
+)
+
+
 class TrainingDisplay:
     """Display training progress live in TTYs and through a tqdm fallback."""
 
@@ -97,13 +107,14 @@ class TrainingDisplay:
 
     @property
     def use_live(self) -> bool:
-        """Whether this display will use Rich Live output."""
+        """Whether this display can safely use Rich's terminal-only Live UI."""
 
         return bool(
             self.enabled
             and _RICH_AVAILABLE
             and self.console is not None
             and self.console.is_terminal
+            and not _is_captured_notebook_environment()
         )
 
     def __enter__(self) -> "TrainingDisplay":
@@ -173,14 +184,14 @@ class TrainingDisplay:
             if self._should_render_metrics(step):
                 self._live.update(Group(self._progress, self._render_table()))
         elif self._fallback_progress is not None:
-            self._fallback_progress.update(step - self._fallback_step)
             if self._should_render_metrics(step):
+                self._fallback_progress.update(step - self._fallback_step)
                 postfix = {self.loss_label: f"{loss:.4f}"}
                 postfix.update(
                     {name: f"{value:.4f}" for name, value in self._extra_metrics.items()}
                 )
                 self._fallback_progress.set_postfix(postfix, refresh=False)
-            self._fallback_step = step
+                self._fallback_step = step
 
     def _print_startup_banner(self) -> None:
         model_config = self.config.model.model_config
@@ -254,9 +265,22 @@ class TrainingDisplay:
         return table
 
     def _should_render_metrics(self, step: int) -> bool:
-        """Keep progress current while honoring the configured metric cadence."""
+        """Honor the configured cadence for non-Live progress and metrics."""
 
         return step % self.plain_interval == 0 or step == self.total_steps
+
+
+def _is_captured_notebook_environment() -> bool:
+    """Return whether output is likely captured by a notebook front-end.
+
+    Rich Live relies on cursor control. A Kaggle/Colab notebook can launch a
+    subprocess that reports a TTY even though its captured cell output cannot
+    replace prior frames. In that case each Live refresh becomes a new table.
+    The standard notebook-parent environment markers are inherited by those
+    subprocesses, so they take priority over Rich's terminal heuristic.
+    """
+
+    return any(os.environ.get(marker) for marker in _CAPTURED_NOTEBOOK_ENVIRONMENT_MARKERS)
 
 
 def _format_duration(seconds: float) -> str:
